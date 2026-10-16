@@ -193,6 +193,7 @@ class ServeBreadSim:
         for s, arm in self.arms.items():
             q = self.d.qpos[arm.qadr].tolist()
             out["qpos"][s] = q + [float(self.d.qpos[arm.g_qadr])]
+        out["qfull"] = np.round(self.d.qpos, 5).tolist()
         for name in self.obj_bodies:
             bid = self.obj_bodies[name]
             out["objects"][name] = self.d.xpos[bid].tolist() + self.d.xquat[bid].tolist()

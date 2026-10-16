@@ -49,6 +49,16 @@ class RobotSpec:
     finger_bodies: List[str] = field(default_factory=list)   # bodies that get the soft-bread adhesion proxy
     reach: float = 0.70            # m, nominal reach (for sampling / UI)
     web_name: str = ""
+    # gripper opening measurement: joint whose qpos maps linearly from closed -> open
+    gripper_joint: str = ""
+    gripper_joint_open: float = 1.0
+    gripper_joint_closed: float = 0.0
+    gripper_reset_qpos: Dict[str, float] = field(default_factory=dict)   # joints teleported at reset (open)
+    gripper_force_param: bool = False   # whether physics.gripper_force applies to this gripper's actuator
+    kp_scale: Optional[float] = None    # None -> physics.arm_kp_scale from the config
+    attach: List[dict] = field(default_factory=list)   # sub-models attached to a site, e.g. a gripper
+    tool_site_spec: Optional[dict] = None   # {"body":..., "pos":[...]} adds the tool site if the MJCF has none
+    fetch: Optional[dict] = None        # where to download the assets from (scripts/fetch_robots.py)
 
 
 # Real Trossen driver: T_new = T_raw @ C  with  X_new=Y_raw, Y_new=Z_raw, Z_new=X_raw
@@ -57,6 +67,12 @@ class RobotSpec:
 _TROSSEN_C = np.array([[0.0, 0.0, 1.0],
                        [1.0, 0.0, 0.0],
                        [0.0, 1.0, 0.0]])
+
+# Franka hand / Robotiq 2F-85: approach = site +Z, fingers open along site +Y
+#   -> EE X = site Y, EE Y = -site X, EE Z = site Z
+_SPREAD_Y = np.array([[0.0, -1.0, 0.0],
+                      [1.0, 0.0, 0.0],
+                      [0.0, 0.0, 1.0]])
 
 ROBOTS: Dict[str, RobotSpec] = {
     "trossen_wxai": RobotSpec(
@@ -81,6 +97,65 @@ ROBOTS: Dict[str, RobotSpec] = {
         reach=0.70,
         finger_bodies=["gripper_left", "gripper_right"],
         web_name="trossen_wxai",
+        gripper_joint="right_carriage_joint",
+        gripper_joint_open=0.044,
+        gripper_joint_closed=0.0,
+        gripper_reset_qpos={"right_carriage_joint": 0.044, "left_carriage_joint": 0.044},
+        gripper_force_param=True,
+    ),
+    # Franka Emika Panda + Franka Hand (MuJoCo Menagerie). Fingers slide along the hand's y axis.
+    "franka_panda": RobotSpec(
+        name="franka_panda",
+        label="Franka Panda",
+        xml="robots/franka_panda/panda.xml",
+        root_body="link0",
+        arm_joints=[f"joint{i}" for i in range(1, 8)],
+        arm_actuators=[f"actuator{i}" for i in range(1, 8)],
+        gripper_actuator="actuator8",
+        gripper_open=255.0,
+        gripper_closed=0.0,
+        tool_site="tcp",
+        tool_site_spec={"body": "hand", "pos": [0.0, 0.0, 0.1085]},
+        R_tool_to_ee=_SPREAD_Y,
+        initial_joints={},           # filled by IK from the Trossen start pose (see robot_poses.json)
+        home_joints=[0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785],
+        gripper_force=40.0,
+        reach=0.85,
+        finger_bodies=["left_finger", "right_finger"],
+        gripper_joint="finger_joint1",
+        gripper_joint_open=0.04,
+        gripper_joint_closed=0.0,
+        gripper_reset_qpos={"finger_joint1": 0.04, "finger_joint2": 0.04},
+        kp_scale=1.0,
+        fetch={"menagerie": "franka_emika_panda", "files": ["panda.xml", "assets", "LICENSE"]},
+    ),
+    # Universal Robots UR5e + Robotiq 2F-85 (MuJoCo Menagerie), gripper on the flange site.
+    "ur5e": RobotSpec(
+        name="ur5e",
+        label="UR5e + Robotiq 2F-85",
+        xml="robots/ur5e/ur5e.xml",
+        root_body="base",
+        arm_joints=["shoulder_pan_joint", "shoulder_lift_joint", "elbow_joint",
+                    "wrist_1_joint", "wrist_2_joint", "wrist_3_joint"],
+        arm_actuators=["shoulder_pan", "shoulder_lift", "elbow", "wrist_1", "wrist_2", "wrist_3"],
+        gripper_actuator="gripper/fingers_actuator",
+        gripper_open=0.0,
+        gripper_closed=255.0,
+        tool_site="gripper/pinch",
+        R_tool_to_ee=_SPREAD_Y,
+        initial_joints={},
+        home_joints=[0.0, -1.9, 1.9, -1.571, -1.571, 0.0],
+        gripper_force=5.0,
+        reach=0.85,
+        finger_bodies=["gripper/left_pad", "gripper/right_pad"],
+        gripper_joint="gripper/right_driver_joint",
+        gripper_joint_open=0.0,
+        gripper_joint_closed=0.8,
+        kp_scale=1.0,
+        attach=[{"xml": "robots/robotiq_2f85/2f85.xml", "site": "attachment_site", "prefix": "gripper/"}],
+        fetch={"menagerie": "universal_robots_ur5e", "files": ["ur5e.xml", "assets", "LICENSE"],
+               "extra": [{"menagerie": "robotiq_2f85", "files": ["2f85.xml", "assets", "LICENSE"],
+                          "dest": "robotiq_2f85"}]},
     ),
 }
 
@@ -88,4 +163,16 @@ ROBOTS: Dict[str, RobotSpec] = {
 def get_robot(name: str) -> RobotSpec:
     if name not in ROBOTS:
         raise KeyError(f"unknown robot '{name}'. Available: {list(ROBOTS)}")
-    return ROBOTS[name]
+    r = ROBOTS[name]
+    if not os.path.exists(os.path.join(ASSETS, r.xml)):
+        raise FileNotFoundError(f"{r.label} assets missing: run `python simulation/scripts/fetch_robots.py {name}`")
+    # start poses for robots without real-rig values: IK-matched to the Trossen start pose
+    if not r.initial_joints:
+        import json
+        p = os.path.join(ASSETS, "robots", "robot_poses.json")
+        if os.path.exists(p):
+            with open(p) as f:
+                poses = json.load(f)
+            if name in poses:
+                r.initial_joints = poses[name]["initial"]
+    return r

@@ -1,0 +1,192 @@
+# -*- coding: utf-8 -*-
+"""
+Build the web viewer's data: models, rollouts, manifest.
+
+    python simulation/scripts/build_web.py --configs trossen_wxai:realsense_d405:bimanual --n 24 --workers 6
+    python simulation/scripts/build_web.py --manifest-only
+
+Rollouts come from the released policy on randomized initial conditions
+(paper protocol, fixed seeds) with the physical drop-in intro recorded.
+"""
+import argparse
+import glob
+import json
+import os
+import shutil
+import sys
+
+import numpy as np
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SIM = os.path.dirname(HERE)
+sys.path.insert(0, SIM)
+os.environ.setdefault("MUJOCO_GL", "egl")
+
+from humanego_sim.cameras import CAMERAS  # noqa: E402
+from humanego_sim.env import ServeBreadSim, deep_update, load_config  # noqa: E402
+from humanego_sim.evaluate import evaluate  # noqa: E402
+from humanego_sim.robots import ROBOTS  # noqa: E402
+from humanego_sim.sampling import sample_scene  # noqa: E402
+from humanego_sim.web_export import export_model, export_rollout  # noqa: E402
+
+WEB = os.path.join(SIM, "web")
+
+
+def mirror_pose(T):
+    S = np.diag([-1.0, 1.0, 1.0, 1.0])
+    return S @ T @ S
+
+
+def T_free(q):
+    from scipy.spatial.transform import Rotation as R
+    T = np.eye(4)
+    T[:3, 3] = q[:3]
+    T[:3, :3] = R.from_quat([q[4], q[5], q[6], q[3]]).as_matrix()
+    return T
+
+
+def rollout_extras(env, log_dir, cfg):
+    """Keypoints / PCA frames in object body frames, appear times, look-ahead."""
+    ep = json.load(open(os.path.join(log_dir, "episode.json")))
+    meta, frames = ep["meta"], ep["frames"]
+    f0 = next(f for f in frames if f["t"] >= 0)
+    T_cw = np.array(meta["T_cam_in_world"])
+    kpts = {}
+    colors = {"obj1": "#22d3ee", "obj2": "#3ddc97"}
+    for side, objs in meta["perception"].items():
+        for k, v in objs.items():
+            body = f"bread_{side}" if k == "obj1" else "plate"
+            if body in kpts:
+                continue
+            Ts = np.array(v["T_obj_in_cam_static"])
+            kl = np.array(v["kpts_local"]).reshape(-1, 3)
+            if side == "left":
+                Ts = mirror_pose(Ts)
+                kl = kl * np.array([-1.0, 1.0, 1.0])   # local coords mirror with the frame
+            pc = (Ts[:3, :3] @ kl.T).T + Ts[:3, 3]
+            pw = (T_cw[:3, :3] @ pc.T).T + T_cw[:3, 3]
+            Tb = T_free(np.array(f0["objects"][body]))
+            Tbi = np.linalg.inv(Tb)
+            pb = (Tbi[:3, :3] @ pw.T).T + Tbi[:3, 3]
+            Tf = Tbi @ T_cw @ Ts
+            kpts[body] = {"pts": np.round(pb, 4).tolist(), "color": colors[k], "frame": np.round(Tf, 4).ravel().tolist()}
+    appear = {}
+    for f in frames:
+        hid = set(f.get("hidden", []))
+        for name in f["objects"]:
+            if name not in hid and name not in appear:
+                appear[name] = f["t"]
+    return {"kpts": kpts, "appear": appear, "look_ahead": int(cfg["control"]["look_ahead_offset"])}
+
+
+def build_config(robot, camera, mode, n, workers, seed, overrides):
+    key = f"{robot}_{camera}_{mode}"
+    ov = deep_update(overrides, {"robot": robot, "camera": camera, "mode": mode})
+    cfg = load_config(None, ov)
+    env = ServeBreadSim(cfg)
+    model_key = key
+    export_model(env, WEB, model_key)
+    rng = np.random.default_rng(seed)
+    scenes = [sample_scene(rng, mode) for _ in range(n)]
+    log_root = os.path.join(SIM, "runs", "web", key)
+    shutil.rmtree(log_root, ignore_errors=True)
+    st = evaluate(ov, scenes=scenes, workers=workers, seed=seed, log_root=log_root, intro=True)
+    rolls = []
+    for r in st["results"]:
+        if "error" in r:
+            print("  episode error:", r["error"])
+            continue
+        ld = os.path.join(log_root, f"ep{r['idx']:03d}")
+        rid = f"{key}_{r['idx']:03d}"
+        ro = export_rollout(env, ld, WEB, rid)
+        ro.update(rollout_extras(env, ld, cfg))
+        ro["model"] = model_key
+        with open(os.path.join(WEB, "data", "rollouts", f"{rid}.json"), "w") as f:
+            json.dump(ro, f, separators=(",", ":"))
+        rolls.append({"id": rid, "scene": ro["scene"], "per_side": {s: {"success": v["success"]}
+                      for s, v in ro["result"]["per_side"].items()}, "success": ro["result"]["success"]})
+    return {"robot": robot, "camera": camera, "mode": mode, "model": model_key, "rollouts": rolls}
+
+
+def tuning_summary(name):
+    d = os.path.join(SIM, "autotune_runs", name, "iterations")
+    if not os.path.isdir(d):
+        return None
+    batches = []
+    for p in sorted(glob.glob(os.path.join(d, "iter_*.json"))):
+        it = json.load(open(p))
+        batches.append({"scores": [round(c["stats"]["per_side_success_rate"], 3) for c in it["candidates"]],
+                        "action": it.get("decision", {}).get("action")})
+    best = json.load(open(os.path.join(SIM, "autotune_runs", name, "best.json"))) if os.path.exists(
+        os.path.join(SIM, "autotune_runs", name, "best.json")) else None
+    note = ""
+    if best:
+        v = best.get("validation", {})
+        note = (f"Grey dots: candidates in each batch (per-arm success on shared random scenes); orange: best so far. "
+                f"Best per-arm success <b>{best['stats']['per_side_success_rate']:.0%}</b>"
+                + (f", validated at <b>{v['per_side_success_rate']:.0%}</b> on {v['n']} fresh scenes." if v else "."))
+    return {"batches": batches, "note": note, "best": best}
+
+
+def write_manifest(configs, tuning_name):
+    man_p = os.path.join(WEB, "data", "manifest.json")
+    old = json.load(open(man_p)) if os.path.exists(man_p) else {"configs": []}
+    keep = {(c["robot"], c["camera"], c["mode"]): c for c in old.get("configs", [])}
+    for c in configs:
+        keep[(c["robot"], c["camera"], c["mode"])] = c
+    cfgs = sorted(keep.values(), key=lambda c: (list(ROBOTS).index(c["robot"]) if c["robot"] in ROBOTS else 9,
+                                                list(CAMERAS).index(c["camera"]) if c["camera"] in CAMERAS else 9,
+                                                c["mode"] != "bimanual"))
+    summary = []
+    for c in cfgs:
+        rs = c["rollouts"]
+        side = lambda s: (np.mean([r["per_side"][s]["success"] for r in rs if s in r["per_side"]])
+                          if any(s in r["per_side"] for r in rs) else None)
+        summary.append({"robot": c["robot"], "camera": c["camera"], "mode": c["mode"], "n": len(rs),
+                        "right": side("right"), "left": side("left"),
+                        "both": float(np.mean([r["success"] for r in rs])) if rs else None})
+        # feature a fully successful rollout
+        for r in rs:
+            r.pop("featured", None)
+        good = [r for r in rs if r["success"]]
+        if good:
+            good[0]["featured"] = True
+    man = {
+        "robots": {k: v.label for k, v in ROBOTS.items()},
+        "cameras": {k: v.label for k, v in CAMERAS.items()},
+        "configs": cfgs,
+        "default": {"robot": "trossen_wxai", "camera": "realsense_d405", "mode": "bimanual"},
+        "summary": summary,
+        "summary_note": ("Every rollout is a closed-loop run of the released checkpoint from a randomized initial "
+                         "condition (bread–plate offset, depth and bread yaw as in the paper's protocol). "
+                         "<b>Two arms</b>: one single-hand model drives both arms; the left arm sees a mirrored "
+                         "image, exactly as on the real robot."),
+        "tuning": tuning_summary(tuning_name),
+    }
+    with open(man_p, "w") as f:
+        json.dump(man, f, separators=(",", ":"))
+    print(f"[web] manifest: {len(cfgs)} configs, {sum(len(c['rollouts']) for c in cfgs)} rollouts")
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--configs", default="trossen_wxai:realsense_d405:bimanual")
+    ap.add_argument("--n", type=int, default=24)
+    ap.add_argument("--workers", type=int, default=6)
+    ap.add_argument("--seed", type=int, default=2026)
+    ap.add_argument("--params", default=None, help="tuned parameters JSON (best.json) to apply")
+    ap.add_argument("--tuning", default="bimanual_v1")
+    ap.add_argument("--manifest-only", action="store_true")
+    args = ap.parse_args()
+    overrides = {}
+    if args.params:
+        from autotune.params import params_to_overrides
+        best = json.load(open(args.params))
+        overrides = params_to_overrides(best["params"], load_config())
+    built = []
+    if not args.manifest_only:
+        for spec in args.configs.split(","):
+            robot, camera, mode = spec.split(":")
+            print(f"[web] building {robot} / {camera} / {mode}")
+            built.append(build_config(robot, camera, mode, args.n, args.workers, args.seed, overrides))
+    write_manifest(built, args.tuning)

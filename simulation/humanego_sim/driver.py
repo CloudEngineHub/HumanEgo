@@ -169,8 +169,9 @@ class SimArm:
         self.aids = [model.actuator(self.prefix + a).id for a in robot.arm_actuators]
         self.gid = model.actuator(self.prefix + robot.gripper_actuator).id
         self.sid = model.site(self.prefix + robot.tool_site).id
-        gj = model.actuator_trnid[self.gid, 0]
+        gj = model.joint(self.prefix + robot.gripper_joint).id
         self.g_qadr = model.jnt_qposadr[gj]
+        self.g_dadr = model.jnt_dofadr[gj]
         self.adh_ids = [model.actuator(f"{self.prefix}adhesion_{fb}").id for fb in robot.finger_bodies
                         if mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, f"{self.prefix}adhesion_{fb}") >= 0]
 
@@ -209,11 +210,8 @@ class SimArm:
         if gripper is not None:
             self.g_cmd = self._g_from = self._g_to = gripper
             self.d.ctrl[self.gid] = gripper
-            # both carriages
-            for j in range(self.m.njnt):
-                nm = self.m.joint(j).name
-                if nm.startswith(self.prefix) and "carriage" in nm:
-                    self.d.qpos[self.m.jnt_qposadr[j]] = gripper
+            for jn, v in self.robot.gripper_reset_qpos.items():
+                self.d.qpos[self.m.jnt_qposadr[self.m.joint(self.prefix + jn).id]] = v
 
     def fk_raw(self, q: np.ndarray) -> np.ndarray:
         """Raw tool-site pose in the base frame for joint vector q."""
@@ -312,9 +310,10 @@ class SimArm:
     def motion_done(self) -> bool:
         return not (self.jinterp.active or self.cinterp.active)
 
-    # gripper: driver position units 0 (closed) .. gripper_open (open)
+    # gripper: actuator control units, robot.gripper_closed .. robot.gripper_open
     def set_gripper_position(self, pos: float, goal_time: float = 1.0):
-        pos = float(np.clip(pos, self.robot.gripper_closed, self.robot.gripper_open))
+        lo, hi = sorted((self.robot.gripper_closed, self.robot.gripper_open))
+        pos = float(np.clip(pos, lo, hi))
         if abs(pos - self._g_to) < 1e-6:
             return
         self._g_from = self.g_cmd
@@ -329,20 +328,23 @@ class SimArm:
         self.set_gripper_position(self.robot.gripper_open, goal_time)
 
     def get_gripper_q(self) -> float:
-        """1 = open, 0 = closed (measured)."""
+        """1 = open, 0 = closed (measured from the gripper joint)."""
+        r = self.robot
         g = float(self.d.qpos[self.g_qadr])
-        return float(np.clip(g / self.robot.gripper_open, 0.0, 1.0))
+        return float(np.clip((g - r.gripper_joint_closed) / (r.gripper_joint_open - r.gripper_joint_closed), 0.0, 1.0))
 
     def gripper_cmd_closed(self) -> bool:
-        return self._g_to < 0.5 * self.robot.gripper_open
+        r = self.robot
+        return abs(self._g_to - r.gripper_closed) < abs(self._g_to - r.gripper_open)
 
     def gripper_settled_closed(self, vel_tol: float = 0.004) -> bool:
         """Commanded closed, closing profile finished, and the fingers have stopped
         (either fully closed or stalled on an object)."""
         if not self.gripper_cmd_closed() or self.t - self._g_t0 < self._g_T:
             return False
-        gv = abs(float(self.d.qvel[self.m.jnt_dofadr[self.m.actuator_trnid[self.gid, 0]]]))
-        return gv < vel_tol
+        r = self.robot
+        gv = abs(float(self.d.qvel[self.g_dadr])) / max(abs(r.gripper_joint_open - r.gripper_joint_closed), 1e-6)
+        return gv < vel_tol / 0.044
 
     def set_draggable(self, enable: bool):
         pass

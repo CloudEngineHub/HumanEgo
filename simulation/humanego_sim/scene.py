@@ -74,8 +74,9 @@ def _rel(path_from_assets: str) -> str:
     return path_from_assets.replace(os.sep, "/")
 
 
-def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
-    xml_path = os.path.join(ASSETS, robot.xml)
+def _spec_with_rel_paths(xml_rel: str) -> mujoco.MjSpec:
+    """Load an MJCF and rewrite its asset paths relative to the assets root."""
+    xml_path = os.path.join(ASSETS, xml_rel)
     child = mujoco.MjSpec.from_file(xml_path)
     rel_dir = os.path.relpath(os.path.dirname(xml_path), ASSETS)
     mdir = child.meshdir or ""
@@ -89,23 +90,45 @@ def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
     child.meshdir = ""
     child.texturedir = ""
     child.modelfiledir = ASSETS
+    return child
+
+
+def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
+    child = _spec_with_rel_paths(robot.xml)
+    for att in robot.attach:                     # e.g. Robotiq 2F-85 on the UR5e flange
+        sub = _spec_with_rel_paths(att["xml"])
+        child.attach(sub, prefix=att.get("prefix", ""), site=child.site(att["site"]))
+    if robot.tool_site_spec:
+        ts = child.body(robot.tool_site_spec["body"]).add_site()
+        ts.name = robot.tool_site
+        ts.pos = list(robot.tool_site_spec["pos"])
+        ts.size = [0.004, 0, 0]
+        ts.group = 5
+    # one visual / collision convention for every robot: visuals in group 1 (hidden in the
+    # policy's clean view), collision in group 3
+    for g in child.geoms:
+        if g.contype == 0 and g.conaffinity == 0:
+            g.group = G_ROBOT
+        else:
+            g.group = G_COLLISION
     # real servos run on-board gravity compensation
     for b in child.bodies:
         if b.name != "world":
             b.gravcomp = 1.0
     # stiffer position servos (the real driver tracks within ~1 mm); keep the
     # Menagerie ratios between joints
-    kp_scale = float(phys.get("arm_kp_scale", 1.0))
+    kp_scale = float(robot.kp_scale if robot.kp_scale is not None else phys.get("arm_kp_scale", 1.0))
     kv_ratio = float(phys.get("arm_kv_ratio", 0.0))
     arm_set = set(robot.arm_actuators)
+    tune_gains = robot.kp_scale is None          # only the WidowX AI servos are re-tuned
     for a in child.actuators:
-        if a.name in arm_set:
+        if a.name in arm_set and tune_gains:
             kp = a.gainprm[0] * kp_scale
             a.gainprm[0] = kp
             a.biasprm[1] = -kp
             a.biasprm[2] = -kv_ratio * kp
             a.forcerange = [a.forcerange[0] * 2.0, a.forcerange[1] * 2.0]
-        elif a.name == robot.gripper_actuator:
+        elif a.name == robot.gripper_actuator and robot.gripper_force_param:
             f = float(phys.get("gripper_force", robot.gripper_force))
             a.forcerange = [-f, f]
             a.forcelimited = 1
@@ -266,18 +289,24 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         _add_box(table, f"table_leg{i}", [0.025, 0.025, leg_h], [lx, ly, -th - leg_h],
                  material="frame_black", collide=False)
 
-    # ---------------- rig frame (visual): rail under the arm bases + camera mast ----------------
+    # ---------------- rig frame (visual): rail behind the camera's view frustum, brackets to the
+    # arm bases, and the camera mast. Nothing of it is visible from the policy camera.
     rig = wb.add_body()
     rig.name = "rig_frame"
     base_z = float(geo.T_base_in_world["right"][2, 3])
     base_x = float(geo.T_base_in_world["right"][0, 3])
-    rail_y = max(abs(geo.T_base_in_world[s][1, 3]) for s in sides) + 0.08
-    rail_y = max(rail_y, 0.40)
-    _add_box(rig, "rail", [0.03, rail_y, 0.015], [base_x - 0.01, 0.0, base_z - 0.015], material="frame_black")
-    for i, yy in enumerate((rail_y - 0.02, -rail_y + 0.02)):
-        _add_box(rig, f"post{i}", [0.02, 0.02, (base_z - 0.03) / 2], [base_x - 0.01, yy, (base_z - 0.03) / 2],
-                 material="frame_black")
     cam_p = geo.T_cam_in_world[:3, 3]
+    rail_x = cam_p[0] + 0.02
+    rail_y = max(max(abs(geo.T_base_in_world[s][1, 3]) for s in sides) + 0.10, 0.42)
+    rail_z = base_z - 0.035
+    _add_box(rig, "rail", [0.02, rail_y, 0.02], [rail_x, 0.0, rail_z], material="frame_black")
+    for s in sides:
+        by = float(geo.T_base_in_world[s][1, 3])
+        _add_box(rig, f"bracket_{s}", [(base_x - rail_x) / 2 + 0.03, 0.045, 0.006],
+                 [(base_x + rail_x) / 2, by, base_z - 0.006], material="frame_black")
+    for i, yy in enumerate((rail_y - 0.02, -rail_y + 0.02)):
+        _add_box(rig, f"post{i}", [0.02, 0.02, (rail_z - 0.02) / 2], [rail_x, yy, (rail_z - 0.02) / 2],
+                 material="frame_black")
     mast_h = cam_p[2] + 0.05
     _add_box(rig, "mast", [0.015, 0.015, mast_h / 2], [cam_p[0] - 0.045, 0.0, mast_h / 2], material="frame_black")
     _add_box(rig, "cam_arm", [0.03, 0.012, 0.01], [cam_p[0] - 0.02, 0.0, cam_p[2] + 0.03], material="frame_black")
@@ -432,12 +461,18 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
 
     # ---------------- write ----------------
     os.makedirs(os.path.join(ASSETS, "scenes"), exist_ok=True)
-    out_name = out_name or f"serve_bread_{robot.name}_{mode}.xml"
-    xml_path = os.path.join(ASSETS, out_name)   # sits at the assets root -> relative asset paths
     model = spec.compile()                        # validate before writing
     xml = spec.to_xml()
-    with open(xml_path, "w") as f:
-        f.write(xml)
+    if out_name is None:
+        import hashlib
+        h = hashlib.sha1(xml.encode()).hexdigest()[:10]
+        out_name = f"serve_bread_{robot.name}_{mode}_{h}.xml"
+    xml_path = os.path.join(ASSETS, out_name)   # sits at the assets root -> relative asset paths
+    if not os.path.exists(xml_path):
+        tmp = f"{xml_path}.{os.getpid()}.tmp"
+        with open(tmp, "w") as f:
+            f.write(xml)
+        os.replace(tmp, xml_path)                 # atomic: parallel workers never see a partial file
     meta = {
         "sides": sides,
         "mode": mode,

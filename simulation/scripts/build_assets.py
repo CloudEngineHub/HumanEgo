@@ -123,6 +123,22 @@ def _export_glb(mesh, name, tex_paths=None, color=None, roughness=0.8, metallic=
 
 
 # ---------------------------------------------------------------------------
+def fetch_polyhaven(asset: str, res: str = "2k"):
+    """Download a CC0 Poly Haven glTF (+ textures) into assets_src/<asset>/ if missing."""
+    import urllib.request
+    d = os.path.join(SRC, asset)
+    if os.path.exists(os.path.join(d, f"{asset}.gltf")):
+        return
+    os.makedirs(os.path.join(d, "textures"), exist_ok=True)
+    with urllib.request.urlopen(f"https://api.polyhaven.com/files/{asset}") as r:
+        files = json.load(r)["gltf"][res]["gltf"]
+    urllib.request.urlretrieve(files["url"], os.path.join(d, f"{asset}.gltf"))
+    for rel, v in files["include"].items():
+        os.makedirs(os.path.dirname(os.path.join(d, rel)), exist_ok=True)
+        urllib.request.urlretrieve(v["url"], os.path.join(d, rel))
+    print(f"[assets] downloaded Poly Haven '{asset}' ({res})")
+
+
 def bake_crust(img: Image.Image) -> Image.Image:
     """Colour-grade the pale (unbaked-looking) bun scan into a golden-brown roll crust,
     keeping the scan's luminance detail."""
@@ -230,7 +246,7 @@ if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     fetch_polyhaven("croissant")
     fetch_polyhaven("hamburger_buns")
-    build_photoscan("croissant", "croissant", size_xyz=(0.138, 0.060, 0.045))
+    build_photoscan("croissant", "croissant", size_xyz=(0.138, 0.062, 0.050))
     build_photoscan("hamburger_buns", "roll", size_xyz=(0.120, 0.070, 0.052), pick="mesh.023", grade=bake_crust)
     build_plate()
     copy_table_texture()

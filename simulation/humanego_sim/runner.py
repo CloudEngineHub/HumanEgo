@@ -217,13 +217,56 @@ class EpisodeRunner:
         return raw, grasp, vis, np.array(pT_world), float(done_prob)
 
     # ------------------------------------------------------------------
+    def _intro_drop(self, rng, record_hz: float, drop_h=(0.05, 0.09), t_total: float = 1.6) -> list:
+        """Objects appear in mid-air one after another and fall onto the table under physics.
+        Recorded with negative time stamps, before perception runs at t = 0."""
+        env = self.env
+        names = ["plate"] + sorted(n for n in env.obj_bodies if n != "plate")
+        rest = {n: env.d.qpos[env.obj_free_qadr[n]:env.obj_free_qadr[n] + 7].copy() for n in names}
+        release = {n: 0.15 + 0.22 * i for i, n in enumerate(names)}
+        air = {}
+        for n in names:
+            q = rest[n].copy()
+            q[2] += rng.uniform(*drop_h) if n != "plate" else 0.035
+            if n != "plate":   # a little tilt so the landing looks natural
+                from scipy.spatial.transform import Rotation as R
+                r0 = R.from_quat([q[4], q[5], q[6], q[3]])
+                r1 = R.from_euler("xy", rng.uniform(-12, 12, 2), degrees=True) * r0
+                x, y, z, w = r1.as_quat()
+                q[3:7] = [w, x, y, z]
+            air[n] = q
+        frames, t, nxt = [], 0.0, 0.0
+        dt = env.dt
+        while t < t_total:
+            for n in names:
+                if t < release[n]:
+                    qa, da = env.obj_free_qadr[n], env.obj_free_dadr[n]
+                    env.d.qpos[qa:qa + 7] = air[n]
+                    env.d.qvel[da:da + 6] = 0.0
+            if t >= nxt - 1e-9:
+                snap = env.snapshot()
+                snap["t"] = round(t - t_total, 4)
+                snap["grip_cmd"] = {s: float(env.arms[s].g_cmd) for s in env.sides}
+                snap["hidden"] = [n for n in names if t < release[n] - 0.12]
+                frames.append(snap)
+                nxt += 1.0 / record_hz
+            env.step()
+            t += dt
+        env.t = 0.0
+        for arm in env.arms.values():
+            arm.t = 0.0
+            arm._g_t0 = 0.0
+        return frames
+
     def run(self, scene: Optional[dict] = None, seed: int = 0, log_dir: Optional[str] = None,
-            record_hz: float = 30.0, save_policy_images: bool = True, verbose: bool = True) -> EpisodeResult:
+            record_hz: float = 30.0, save_policy_images: bool = True, verbose: bool = True,
+            intro: bool = True) -> EpisodeResult:
         wall0 = time.time()
         env, cc = self.env, self.cc
         env.rng = np.random.default_rng(seed)
         self._seed_policy_noise(int(self.cfg["policy"].get("seed", 0)) + seed)
-        env.reset(scene)
+        env.reset(scene, settle=0.0 if intro else 0.4)
+        intro_frames = self._intro_drop(np.random.default_rng(seed + 99), record_hz) if intro else []
         sides = env.sides
         self.perception = SimPerception(env, split_x_ratio=float(cc.get("split_x_ratio", 0.5)),
                                         n_init_frames=int(self.cfg.get("perception", {}).get("n_init_frames", 10)),
@@ -240,7 +283,7 @@ class EpisodeRunner:
         rec_dt = 1.0 / record_hz
         next_pol, next_ctl, next_rec = 0.0, 0.0, 0.0
         pending = None          # (deliver_time, payload) — inference latency
-        frames, policy_log = [], []
+        frames, policy_log = list(intro_frames), []
         img_dir = None
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
