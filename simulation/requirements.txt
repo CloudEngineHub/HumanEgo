@@ -1,0 +1,13 @@
+# HumanEgo simulation (in addition to the main repo's requirements.txt)
+mujoco==3.16.0
+opencv-python-headless
+scipy
+pyyaml
+python-box
+trimesh
+pillow
+scikit-learn
+imageio
+imageio-ffmpeg
+coacd            # only for scripts/build_assets.py (convex decomposition)
+torch            # CUDA build recommended; CPU works (slower)

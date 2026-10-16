@@ -1,0 +1,90 @@
+# =============================================================================
+# HumanEgo simulation — serve_bread
+# =============================================================================
+# World frame: origin on the table top directly below the camera, +x forward
+# (away from the robot), +y to the robot's left, +z up. All lengths in metres.
+# =============================================================================
+
+task: serve_bread
+mode: bimanual             # "single" (right arm, as in the paper) | "bimanual" (as in the teaser)
+robot: trossen_wxai        # trossen_wxai | franka_panda | ur5e
+camera: realsense_d405     # realsense_d405 | realsense_d435 | zed2i | zed_mini
+
+policy:
+  ckpt: ./checkpoints/serve_bread/latest.pt     # huggingface-cli download Leo-TX/HumanEgo --include "serve_bread/*" --local-dir ./checkpoints
+  num_inference_steps: 20
+  seed: 0                                       # flow-matching noise seed (fixed per episode, like the real loop)
+
+rig:
+  # Camera optical centre above the table top. The real driver clamps EE targets
+  # at safe_z_min = -0.20 m in the arm-base frame "to protect the table", so the
+  # table top sits just below that: bases 0.215 m above the table -> camera
+  # 0.215 + 0.221 = 0.436 m. Objects then sit ~0.60 m from the camera, inside the
+  # depth range of the released human training data (0.65 +- 0.12 m).
+  cam_height: 0.436
+  # Hand-eye calibration of the real HumanEgo rig (AriaMimic cfg/inference/serve_bread)
+  T_base_in_cam:
+    right: [[0.0, -1.0, 0.0, 0.323765], [-0.60181502, 0.0, -0.79863551, 0.10437084],
+            [0.79863551, 0.0, -0.60181502, 0.22907588], [0.0, 0.0, 0.0, 1.0]]
+    left:  [[0.0, -1.0, 0.0, -0.323765], [-0.60181502, 0.0, -0.79863551, 0.10437084],
+            [0.79863551, 0.0, -0.60181502, 0.22907588], [0.0, 0.0, 0.0, 1.0]]
+  table:
+    x_min: -0.35           # edge under the robot frame
+    x_max: 0.98
+    half_width: 0.75
+    thickness: 0.045
+
+scene:
+  # object initial poses on the table: [x, y, yaw_deg]
+  plate: [0.47, 0.00, 0.0]
+  # bread yaw ~90 deg = long axis left-right in the image, as in the human demos
+  bread:
+    right: {type: roll, pose: [0.46, -0.27, 100.0]}
+    left: {type: croissant, pose: [0.46, 0.27, 80.0]}
+  single:                  # used when mode == single (paper layout: plate left, bread right)
+    plate: [0.47, 0.11, 0.0]
+    bread: {type: croissant, pose: [0.47, -0.15, 95.0]}
+
+physics:
+  timestep: 0.002
+  bread_friction: [2.0, 0.02, 0.002]   # effective: real bread deforms around the fingers
+  bread_mass: {croissant: 0.050, roll: 0.065}
+  bread_solref: [0.008, 1.0]
+  bread_solimp: [0.9, 0.95, 0.001, 0.5, 2.0]
+  plate_mass: 0.45
+  gripper_force: 12.0      # N
+  finger_adhesion: 6.0     # N per finger, soft-bread proxy (0 = rigid bread); active only while closed
+  arm_kp_scale: 4.0        # x Menagerie gains (real Trossen servos track much tighter)
+  arm_kv_ratio: 0.08       # extra joint damping relative to kp
+
+perception:                # mirrors cfg/inference/serve_bread + cfg/preprocess/base/KptsSelector.yaml
+  n_init_frames: 10
+  depth_noise: true
+  latch_dist_thresh: 0.20
+
+control:                   # cfg/inference/serve_bread/Control.yaml (real rig)
+  control_freq: 10.0
+  step_stride: 2
+  look_ahead_offset: 45
+  max_history_len: 1
+  alpha: 0.5
+  alpha_rot: 0.0
+  duration_smooth_param: 12.0
+  grasp_threshold: 0.6
+  should_grasp_method: any
+  use_safety_cage: true
+  max_pos_step: 0.08
+  max_rot_step: 0.02
+  safe_z_min: -0.20
+  done_threshold: 0.99
+  done_requires_grasp: true
+  grasp_latch: true
+  use_idle_done: true
+  idle_time_limit: 1.5
+  idle_dist_threshold: 0.13
+  close_gripper_goal_time: 0.5
+  open_gripper_goal_time: 0.5
+  bimanual_start_delay: 6.0
+  split_x_ratio: 0.5
+  policy_period: 0.30      # s between re-plans (real loop ran at ~3.3 Hz with DINO-SAM + LaMa)
+  max_episode_time: 40.0
