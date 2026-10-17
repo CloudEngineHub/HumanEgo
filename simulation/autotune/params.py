@@ -65,6 +65,19 @@ DEFAULT_SPACE: List[ParamSpec] = [
     ParamSpec("physics.gripper_force", 8.0, 35.0, 12.0, group="physics", note="gripper force cap, N (Menagerie: 35)"),
 ]
 
+# grasp skill of the low-level controller (control.grasp_assist; controller.py)
+GRASP_SKILL: List[ParamSpec] = [
+    ParamSpec("control.grasp_assist.lateral_gain", 0.0, 1.0, 0.7, note="pull the pinch point onto the bread's long axis"),
+    ParamSpec("control.grasp_assist.along_max", 0.0, 0.07, 0.045, note="max pinch offset from the bread centre along it, m"),
+    ParamSpec("control.grasp_assist.height_max", -0.01, 0.015, 0.004, note="max pinch height above the perceived centre, m"),
+    ParamSpec("control.grasp_assist.arrive_tol", 0.004, 0.03, 0.01, "log", note="close once this close to the pinch point, m"),
+    ParamSpec("control.grasp_assist.close_hold", 0.2, 1.2, 0.6, note="hold still while the fingers close, s"),
+    ParamSpec("control.grasp_assist.q_empty", 0.03, 0.3, 0.1, "log", note="gripper opening that means nothing is held"),
+    ParamSpec("control.grasp_assist.regrasp_max", 0, 4, 2, "int", note="re-grasp attempts"),
+    ParamSpec("control.grasp_assist.retry_lower", 0.0, 0.012, 0.005, note="each re-grasp aims this much lower, m"),
+    ParamSpec("control.grasp_assist.retry_inward", 0.0, 0.025, 0.01, note="... and this much closer to the middle, m"),
+]
+
 # gripper servo of the non-Trossen hands (Menagerie Franka: ~3 N on a bread; 2F-85: tendon force cap)
 ROBOT_GRIPPER: List[ParamSpec] = [
     ParamSpec("physics.robot_gripper.franka_panda.kp_scale", 1.0, 10.0, 1.0, "log", group="physics",
@@ -83,7 +96,7 @@ RIGID_PHYSICS: List[ParamSpec] = [
 def space_from_names(names: Optional[List[str]] = None) -> List[ParamSpec]:
     if not names:
         return list(DEFAULT_SPACE)
-    by = {p.name: p for p in RIGID_PHYSICS + ROBOT_GRIPPER}
+    by = {p.name: p for p in RIGID_PHYSICS + ROBOT_GRIPPER + GRASP_SKILL}
     by.update({p.name: p for p in DEFAULT_SPACE})
     return [by[n] for n in names]
 

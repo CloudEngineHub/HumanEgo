@@ -120,6 +120,34 @@ class EpisodeRunner:
             closed = closed or arm.gripper_settled_closed()
         return 1.0 if closed else 0.0
 
+    def _perceived_geometry(self, side: str, so) -> dict:
+        """What the robot knows about the scene from its own perception at t = 0 (world frame):
+        bread centre / long axis / extent from its keypoints, and a place height over the plate."""
+        env, out = self.env, {}
+        Tcw = env.T_cam_in_world
+        pts = {}
+        for key, m in so.objs_meta.items():
+            T, kl = np.asarray(m["T_obj_in_cam_static"]), np.asarray(m["kpts_local"]).reshape(-1, 3)
+            if side == "left":                       # perception of the left arm lives in the mirrored image
+                T, kl = mirror_pose(T), kl * np.array([-1.0, 1.0, 1.0])
+            pc = (T[:3, :3] @ kl.T).T + T[:3, 3]
+            pts[key] = (Tcw[:3, :3] @ pc.T).T + Tcw[:3, 3]
+        b = pts.get(self.anchor_key)
+        if b is not None and len(b) >= 3:
+            c = b.mean(0)
+            xy = b[:, :2] - c[:2]
+            ev, evec = np.linalg.eigh(xy.T @ xy)
+            a2 = evec[:, np.argmax(ev)]
+            a = np.array([a2[0], a2[1], 0.0])
+            w = np.array([-a[1], a[0], 0.0])
+            out["bread"] = {"c": c.tolist(), "a": a.tolist(), "half_len": float(np.abs(xy @ a2).max()),
+                            "half_wid": float(np.abs(xy @ w[:2]).max())}
+            plate = pts.get("obj2")
+            # place height: bread centre height on the table + the plate's floor (rim keypoints - 1.35 cm)
+            floor = float(plate[:, 2].mean()) - 0.0135 if plate is not None else 0.0085
+            out["place_z"] = float(c[2]) + max(floor, 0.0)
+        return out
+
     def _apply_forced_lift(self, pt_cam, arm, counter, anchor_p_base):
         if counter <= 0:
             return pt_cam
@@ -273,6 +301,11 @@ class EpisodeRunner:
         ctxs = {s: SideCtx(side=s, is_flip=(s == "left"), objs=side_objs[s]) for s in sides}
         ctxs["right"].is_active = True
         controller = SimController(env.arms, cc)
+        geoms = {s: self._perceived_geometry(s, side_objs[s]) for s in sides}
+        for s in sides:
+            if geoms[s].get("bread"):
+                controller.set_geometry(s, geoms[s]["bread"], env.T_cam_in_world)
+        self._controller = controller
         start_delay = float(cc.get("bimanual_start_delay", 6.0))
 
         P = float(cc.get("policy_period", 0.3))
@@ -328,18 +361,61 @@ class EpisodeRunner:
                 # ---- per-side wrap-up trigger ----
                 for s, ctx in ctxs.items():
                     if ctx.is_active and ctx.is_done and ctx.wrap_phase is None:
-                        ctx.wrap_phase = "open"
                         ctx.wrap_t0 = t
                         controller.muted[s] = True
                         controller.clear(s)
                         arm = env.arms[s]
                         arm.move_p(arm.get_p(), duration=0.05)      # halt
-                        arm.open_gripper(goal_time=0.5)
+                        rel = cc.get("release", {}) or {}
+                        if rel.get("place_down") and arm.gripper_cmd_closed() and geoms[s].get("place_z") is not None:
+                            # lower the bread onto the plate before opening (instead of dropping it)
+                            T = arm.T_base_in_world @ arm.get_T_ee_in_base()
+                            z_goal = geoms[s]["place_z"] + float(rel.get("margin", 0.012))
+                            if T[2, 3] > z_goal + 0.005:
+                                T[2, 3] = z_goal
+                                Tb = np.linalg.inv(arm.T_base_in_world) @ T
+                                arm.move_p(T_to_p(Tb), duration=float(rel.get("place_time", 0.9)),
+                                           safe_z_min=controller.safe_z_min)
+                                ctx.wrap_phase = "place"
+                        if ctx.wrap_phase is None:
+                            ctx.wrap_phase = "open"
+                            arm.open_gripper(goal_time=0.5)
                         if verbose:
                             print(f"[sim] {s} done ({ctx.done_reason}) at t={t:.1f}s -> open + home")
             # ---- wrap-up sequencing (open -> home) ----
             for s, ctx in ctxs.items():
-                if ctx.wrap_phase == "open" and t - ctx.wrap_t0 >= 0.8:
+                rel = cc.get("release", {}) or {}
+                if ctx.wrap_phase == "place" and t - ctx.wrap_t0 >= float(rel.get("place_time", 0.9)) + 0.15:
+                    ctx.wrap_phase = "open"
+                    ctx.wrap_t0 = t
+                    env.arms[s].open_gripper(goal_time=0.5)
+                elif ctx.wrap_phase == "open" and t - ctx.wrap_t0 >= 0.8:
+                    ctx.wrap_t0 = t
+                    d_back = float(rel.get("retreat", 0.0))
+                    d_up = float(rel.get("lift", 0.0))
+                    if d_up > 0 and d_back <= 0:
+                        # lift the open hand straight up first: a bread pinned under a finger is
+                        # freed instead of being dragged along by the move home
+                        arm = env.arms[s]
+                        T = arm.T_base_in_world @ arm.get_T_ee_in_base()
+                        T[2, 3] += d_up
+                        Tb = np.linalg.inv(arm.T_base_in_world) @ T
+                        arm.move_p(T_to_p(Tb), duration=0.8, safe_z_min=controller.safe_z_min)
+                        ctx.wrap_phase = "retreat"
+                    elif d_back > 0:
+                        # back the open fingers out along the approach before going home, so a bread
+                        # resting on the plate is not dragged along
+                        arm = env.arms[s]
+                        T = arm.T_base_in_world @ arm.get_T_ee_in_base()
+                        T[:3, 3] -= d_back * T[:3, 2]
+                        T[2, 3] += float(rel.get("retreat_up", 0.02))
+                        Tb = np.linalg.inv(arm.T_base_in_world) @ T
+                        arm.move_p(T_to_p(Tb), duration=0.8, safe_z_min=controller.safe_z_min)
+                        ctx.wrap_phase = "retreat"
+                    else:
+                        ctx.wrap_phase = "home"
+                        env.arms[s].go_home(duration=3.0)
+                elif ctx.wrap_phase == "retreat" and t - ctx.wrap_t0 >= 0.9:
                     ctx.wrap_phase = "home"
                     ctx.wrap_t0 = t
                     env.arms[s].go_home(duration=3.0)
@@ -373,6 +449,9 @@ class EpisodeRunner:
                 break
 
         per_side = self.evaluate(ctxs)
+        for s_ in per_side:
+            if controller.events.get(s_):
+                per_side[s_]["events"] = controller.events[s_][:24]
         success = all(v["success"] for v in per_side.values())
         res = EpisodeResult(success=success, per_side=per_side, duration=env.t, n_policy_steps=n_pol,
                             wall_time=time.time() - wall0, log_dir=log_dir,

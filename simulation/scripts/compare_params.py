@@ -30,6 +30,7 @@ if __name__ == "__main__":
     ap.add_argument("--seed", type=int, default=7777)
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--log", default=None, help="keep every episode under simulation/runs/<log>/<set name>/")
     args = ap.parse_args()
     extra = parse_sets(args.set)
     base = load_config(None, extra)
@@ -41,7 +42,8 @@ if __name__ == "__main__":
         name, path = spec.split("=", 1)
         params = {} if path == "-" else {k: v for k, v in json.load(open(path))["params"].items() if k not in args.drop}
         ov = deep_update(params_to_overrides(params, base) if params else {}, extra)
-        st = evaluate(ov, scenes=scenes, workers=args.workers, seed=args.seed)
+        log_root = os.path.join(os.path.dirname(HERE), "runs", args.log, name) if args.log else None
+        st = evaluate(ov, scenes=scenes, workers=args.workers, seed=args.seed, log_root=log_root)
         res = st.pop("results", [])
         strict = [v.get("success_strict") for r in res if "per_side" in r for v in r["per_side"].values()]
         st["per_side_success_strict"] = float(np.mean(strict)) if strict else None
