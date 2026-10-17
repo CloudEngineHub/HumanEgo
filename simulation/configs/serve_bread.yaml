@@ -116,3 +116,11 @@ per_robot:
       # then stays hooked on the open gripper; a volumetric flex (tets to the bread's centre)
       # keeps them out (12 scenes: 17% -> 54% per arm)
       soft: {dim: 3}
+    control:
+      grasp_assist: {gap_empty: 0.015}
+  franka_panda:
+    physics:
+      # Franka's thin fingers slip between the vertices of the coarse collision skin and the
+      # bread stays hooked on the open hand; a finer skin with a 2 mm shell keeps them out
+      # (24 scenes with the grasp skill: 42% -> 50% per arm, stuck breads 12 -> 2)
+      soft: {surface: fine, radius: 0.002}

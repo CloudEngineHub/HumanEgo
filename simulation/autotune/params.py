@@ -57,7 +57,7 @@ DEFAULT_SPACE: List[ParamSpec] = [
     ParamSpec("control.idle_time_limit", 0.5, 3.5, 1.5, note="s holding near the plate before release"),
     ParamSpec("control.idle_dist_threshold", 0.04, 0.18, 0.13, note="hand-to-plate distance for release"),
     ParamSpec("control.forced_lift_height", 0.0, 0.10, 0.05, note="post-grasp lift bias, m"),
-    ParamSpec("control.tool_pitch_deg", -10.0, 40.0, 0.0, note="gripper held this much more level than the EE pose"),
+    ParamSpec("control.tool_pitch_deg", -25.0, 40.0, 0.0, note="gripper held this much more level than the EE pose"),
     # ---- simulator physics: soft bread (MuJoCo flex) and contact, real-world ranges ----
     ParamSpec("physics.soft.young", 6e3, 6e4, 2e4, "log", group="physics", note="crumb Young's modulus, Pa"),
     ParamSpec("physics.soft.damping", 5e-3, 6e-2, 3e-2, "log", group="physics", note="crumb viscous loss, s"),
