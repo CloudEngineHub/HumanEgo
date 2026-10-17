@@ -186,7 +186,7 @@ export class LiveEpisode {
   }
 
   evaluate() {
-    const out = {}, pl = this.objectPos('plate'), pp = [pl[0], pl[1]];
+    const sp = this.spec, out = {}, pl = this.objectPos('plate'), pp = [pl[0], pl[1]];
     for (const s of this.sides) {
       const bp = this.objectPos(`bread_${s}`), dxy = Math.hypot(bp[0] - pp[0], bp[1] - pp[1]), z = bp[2];
       out[s] = { success: dxy < sp.objects.plate.R - 0.02 && z > 0.004 && z < 0.12 && !this.arms[s].cmdClosed(), dist_to_plate_center: dxy };
