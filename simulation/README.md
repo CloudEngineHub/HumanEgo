@@ -16,7 +16,7 @@ ONNX Runtime Web) from any initial condition you drag into place.
 | Robots | Trossen WidowX AI (real rig) · Franka Panda · UR5e + Robotiq 2F-85 |
 | Cameras | RealSense D405 (real rig) · RealSense D435 · ZED 2i · ZED Mini |
 | Arms | two (independent bimanual, as in the teaser) · one (as in the paper) |
-| Objects | photoscanned croissant / roll and a ceramic plate at the sizes measured from the released dataset |
+| Objects | **soft** croissant and sugar danish loaf (MuJoCo flex, they squash in the gripper) modelled after the breads in the real rollouts, light-blue plate, maple butcher-block table; sizes measured from the released dataset |
 
 ## Quick start
 
@@ -26,7 +26,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt -r simulation/requirements.txt
 huggingface-cli download Leo-TX/HumanEgo --include "serve_bread/*" --local-dir ./checkpoints
 
-python simulation/scripts/build_assets.py                 # once: object meshes (downloads CC0 photoscans)
+python simulation/scripts/build_assets.py                 # once: procedural bread / plate / table assets
 python simulation/scripts/run_episode.py --video          # one bimanual episode -> simulation/runs/...
 ```
 
@@ -67,17 +67,44 @@ Notes on the modelling choices (all in `configs/serve_bread.yaml`):
   bases. Objects then lie ~0.6 m from the camera, inside the depth range of the human
   training data. Bread yaw ~90° (long axis left–right in the image) as in the demos.
 * **Object sizes and masses** come from the released dataset's triangulated contour
-  keypoints (croissant ≈ 13.8 × 6.2 × 5 cm, plate ⌀ 24.5 cm) and real weights
-  (croissant 50 g, roll 65 g, plate 450 g).
+  keypoints (croissant ≈ 13.8 × 6.2 × 5 cm, plate ⌀ 24.5 cm), the real rollout video for
+  the danish loaf (≈ 14 × 7.4 × 6 cm, measured against the plate) and real weights
+  (croissant 50 g, danish 75 g, plate 450 g).
+* **Breads that look like the real ones.** `scripts/bread_gen.py` builds the straight rolled
+  croissant of the demos (chevron bands, pale dough in the grooves, glossy egg wash) and the
+  laminated danish loaf with its sugar crust as parametric surfaces with painted PBR maps.
+  As in the real bimanual run, the right arm gets the croissant and the left arm the danish.
+* **Soft bread** (`humanego_sim/softbody.py`). Each bread is a MuJoCo flex: its collision
+  surface is interpolated from a 4 × 2 × 2 trilinear grid of point masses with volumetric
+  elasticity (E = 20 kPa, ν = 0.25, crumb of a fresh croissant), and the textured mesh is
+  bound to the same grid as a skin, so the crust visibly squashes under the fingers and
+  springs back. The grip holds by friction alone (μ = 1.0, the Menagerie gripper servo:
+  kp 339 N/m, ≈ 11 N on a croissant). Flex elasticity needs MuJoCo's `discrete`
+  integrator (implicit in position, stable at the 2 ms step); `impratio = 100` stops a held
+  bread from creeping out of the grip. `physics.bread_model: rigid` restores the earlier
+  rigid-bread + finger-adhesion proxy.
 * **Grasp state.** The real loop flags a grasp when the measured gripper opening drops
-  below 50 % — soft bread squashes well below that. Rigid sim bread cannot squash, so a
-  gripper that has finished closing and stalled on an object also counts
-  (`control.grasp_state_source`).
-* **Soft-bread proxy.** The policy pinches like the humans in the data: ~1–2 cm above the
-  bread's centre (measured from the 60 demos: 1.2 cm above the contour centroid, approach
-  ~7° below horizontal). Real bread deforms around the fingers and holds; rigid bread is
-  squeezed out. Each finger therefore gets a small MuJoCo adhesion actuator that is on
-  only while the gripper is closed (`physics.finger_adhesion`, 0 = rigid).
+  below 50 %; in simulation a gripper that has finished closing and stalled on the bread
+  also counts (`control.grasp_state_source`).
+
+### Why grasps land above the bread's centre
+
+Measured over 32 grasps (`scripts/grasp_test.py`, `scripts/diagnose_episode.py`), the
+fingertip point closes ≈ 1.6–2.2 cm above the bread's centre (the croissant is 5 cm tall).
+The offset adds up from three parts of the real pipeline, all reproduced faithfully:
+
+| | above centre |
+|---|---|
+| perception: keypoints are lifted from depth on the visible top surface | +0.2–0.6 cm |
+| policy: the predicted grasp point relative to those keypoints (the human demos pinch 1.2 cm above the contour centroid) | +0.5 cm |
+| execution: the driver re-plans a quintic with `goal_time = 1.2 s` from the current state every 0.1 s (no feed-forward, as `RobotArmTrossen.move_p`), so the arm trails the descending target by ≈ 2 cm; the gripper closes on the `any` grasp signal (0.5 s) and the post-grasp lift starts before the arm catches up | +1.0–1.2 cm |
+
+Shorter look-ahead does not help (it raises the grasp to +2.2 cm); a shorter goal time
+lowers it by 0.3 cm. With friction-only soft bread this matters: a pinch holds when the
+fingertips are ≤ ≈ 1.9 cm above the centre and slips out above that (the pads then press
+on the rounded top, above the bread's widest section), independently of grid resolution,
+crumb stiffness or friction (`scripts/grasp_test.py` replays recorded grasp poses with any physics). The
+rigid + adhesion proxy hid this.
 
 ## Live mode: the policy in your browser
 
@@ -117,8 +144,8 @@ python simulation/scripts/autotune.py --name my_rig --pop 8 --scenes 14 --worker
 Searched parameters (`autotune/params.py`): the controller knobs of
 `cfg/inference/serve_bread/Control.yaml` (EMA, look-ahead, stride, goal-time factor,
 safety cage, grasp threshold and look-ahead window, idle-done release, forced lift),
-the TCP offset, and the soft-bread proxy (adhesion, friction, gripper force) — all within
-physically plausible bounds. Findings from the loop so far:
+the TCP offset, and the bread physics within the range of real crumb (Young's modulus,
+damping, crust friction, gripper force cap). Findings from the loop so far:
 
 * the production grasp timing (`any` over the whole chunk) is near-optimal — closing later
   (`grasp_k_any = 15`) misses more grasps;
@@ -146,20 +173,21 @@ simulation/
   configs/serve_bread.yaml     rig calibration, scene, physics, controller (real values)
   humanego_sim/
     scene.py robots.py cameras.py   MJCF builder, robot / camera registries
+    softbody.py                     soft bread: flex on a trilinear grid + skin
     driver.py env.py                SimArm (Trossen-driver behaviour + IK), physics + rendering
     perception.py controller.py     released perception modules, production controller
     runner.py evaluate.py sampling.py   closed loop, parallel evaluation, initial conditions
     web_export.py live_export.py replay.py glb_tools.py
   autotune/                    population search + decision rules + agent inbox
-  scripts/                     build_assets, run_episode, evaluate, autotune, diagnose_episode,
-                               fetch_robots, fit_robot_poses, export_onnx, build_web, deploy_web
+  scripts/                     build_assets, bread_gen, run_episode, evaluate, autotune, grasp_test,
+                               diagnose_episode, fetch_robots, fit_robot_poses, export_onnx,
+                               build_web, deploy_web, smoke_test
   web/                         index.html, css/, js/ (viewer.js, app.js, live/), tools/
 ```
 
 ## Credits
 
 Robot models: [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
-(Trossen WidowX AI, Franka Panda, UR5e, Robotiq 2F-85). Bread photoscans:
-[Poly Haven](https://polyhaven.com) (CC0). Maple tabletop texture:
-[trossen_arm_mujoco](https://github.com/TrossenRobotics/trossen_arm_mujoco) (BSD-3-Clause).
+(Trossen WidowX AI, Franka Panda, UR5e, Robotiq 2F-85). Breads, plate and tabletop are
+procedural (`scripts/bread_gen.py`, `scripts/build_assets.py`).
 Physics: [MuJoCo](https://mujoco.org); in-browser inference: ONNX Runtime Web; rendering: three.js.

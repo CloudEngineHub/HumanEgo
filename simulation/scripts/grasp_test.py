@@ -59,7 +59,7 @@ def grasp_poses(run_dir: str, side: str, n: int):
 SAFE_Z = -0.20     # real driver floor in the arm-base frame (control.safe_z_min)
 
 
-def run_test(env, side, T_ee_in_bread, bread7, dz, lift=0.12, settle=0.3):
+def run_test(env, side, T_ee_in_bread, bread7, dz, lift=0.12, settle=0.3, back=0.0):
     env.reset()
     name = f"bread_{side}"
     env.place_object(name, bread7)
@@ -74,6 +74,7 @@ def run_test(env, side, T_ee_in_bread, bread7, dz, lift=0.12, settle=0.3):
     Tg = Tb @ T_ee_in_bread
     Tg[2, 3] += dz
     approach = Tg[:3, 2]
+    Tg[:3, 3] -= back * approach            # shallower grasp: fingertips stop `back` m earlier
     Tpre = Tg.copy()
     Tpre[:3, 3] -= 0.06 * approach
     Tpre[2, 3] += 0.02
@@ -107,6 +108,7 @@ if __name__ == "__main__":
     ap.add_argument("--side", default="right")
     ap.add_argument("--n", type=int, default=6)
     ap.add_argument("--dz", default="-0.01,0,0.01")
+    ap.add_argument("--back", default="0", help="comma list: pull the grasp back along the approach (m)")
     ap.add_argument("--set", action="append", default=[])
     args = ap.parse_args()
     poses = grasp_poses(args.run_dir, args.side, args.n)
@@ -115,12 +117,14 @@ if __name__ == "__main__":
     rows = []
     for T, b7, ep in poses:
         for dz in [float(x) for x in args.dz.split(",")]:
-            r = run_test(env, args.side, T, b7, dz)
+          for bk in [float(x) for x in args.back.split(",")]:
+            r = run_test(env, args.side, T, b7, dz, back=bk)
             r["episode"] = ep
+            r["back_cm"] = round(bk * 100, 1)
             rows.append(r)
             print(json.dumps(r), flush=True)
-    for dz in sorted({r["dz_cm"] for r in rows}):
-        rr = [r for r in rows if r["dz_cm"] == dz]
-        print(f"dz {dz:+.1f} cm: held {sum(r['held'] for r in rr)}/{len(rr)}  "
+    for dz, bk in sorted({(r["dz_cm"], r["back_cm"]) for r in rows}):
+        rr = [r for r in rows if r["dz_cm"] == dz and r["back_cm"] == bk]
+        print(f"dz {dz:+.1f} cm back {bk:.1f} cm: held {sum(r['held'] for r in rr)}/{len(rr)}  "
               f"tcp above centre {np.mean([r['tcp_above_centre_cm'] for r in rr]):.1f} cm  "
               f"squash {np.mean([r['squash_mm'] for r in rr]):.1f} mm")

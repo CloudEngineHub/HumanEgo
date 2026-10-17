@@ -178,7 +178,7 @@ def uv_mesh(sp: BreadSpec, ns: int, nt: int, size):
     return V, F, UV
 
 
-def paint_textures(sp: BreadSpec, W=2048, H=1024, seed=0):
+def paint_textures(sp: BreadSpec, W=1536, H=2048, seed=0):
     """Base colour (sRGB uint8), roughness (uint8) and tangent-space normal map (uint8)."""
     rng = np.random.default_rng(seed)
     u = (np.arange(W) + 0.5) / W
@@ -316,17 +316,22 @@ def _bun() -> BreadSpec:
         height = 1.2 * n2
         # sugar crystals: dense on the dome, on the fold crests, thinning down the sides
         dens = _smoothstep(0.25, 0.85, top) * (0.45 + 0.55 * crest) * (1 - _smoothstep(0.82, 1.0, np.abs(x)))
-        n_cr = int(W * H * 0.022)
+        n_cr = int(W * H * 0.006)
         cy = rng.integers(0, H, n_cr); cx = rng.integers(0, W, n_cr)
         keep = rng.random(n_cr) < dens[cy, cx]
         cy, cx = cy[keep], cx[keep]
+        rad = rng.choice([2.5, 3.5, 4.5], len(cy), p=[0.5, 0.35, 0.15])     # texels (~0.1 mm each)
+        bright = 0.8 + 0.2 * rng.random(len(cy))
         sugar = np.zeros((H, W))
-        for dy in (-2, -1, 0, 1, 2):
-            for dx in (-2, -1, 0, 1, 2):
-                rr = dx * dx + dy * dy
-                w = 1.0 if rr <= 1 else (0.8 if rr <= 2 else (0.35 if rr <= 5 else 0.0))
-                yy = np.clip(cy + dy, 0, H - 1); xx = (cx + dx) % W
-                np.maximum.at(sugar, (yy, xx), w * (0.75 + 0.25 * rng.random(len(cy))))
+        for dy in range(-5, 6):
+            for dx in range(-5, 6):
+                rr = np.sqrt(dx * dx + dy * dy)
+                w = np.clip(1.6 - rr / rad, 0, 1) * bright      # facetted disc with a soft rim
+                m = w > 0
+                if not m.any():
+                    continue
+                yy = np.clip(cy[m] + dy, 0, H - 1); xx = (cx[m] + dx) % W
+                np.maximum.at(sugar, (yy, xx), w[m])
         sug_c = _srgb((255, 255, 252))
         col = col * (1 - sugar[..., None]) + sug_c[None, None] * sugar[..., None]
         rough = rough * (1 - 0.5 * sugar) + 0.25 * sugar
@@ -340,7 +345,7 @@ def _bun() -> BreadSpec:
 SPECS = {"croissant": _croissant, "bun": _bun}
 
 
-def build(name: str, vis_res=(150, 96), flex_res=(22, 14), tex=(2048, 1024), seed=0):
+def build(name: str, vis_res=(150, 96), flex_res=(22, 14), tex=(1536, 2048), seed=0):
     """Returns dict(vis=(V, F, UV), flex=(V, F), tex=(rgb, rough, normal), size)."""
     sp = SPECS[name]()
     Vv, Fv, UV = uv_mesh(sp, vis_res[0], vis_res[1], sp.size)
