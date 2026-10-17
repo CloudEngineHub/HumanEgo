@@ -19,3 +19,4 @@ web/assets/textures/
 MUJOCO_LOG.TXT
 web/assets/policy/
 web/assets/live/
+exports/
