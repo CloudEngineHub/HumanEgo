@@ -54,14 +54,21 @@ def T_to_p(T: np.ndarray) -> np.ndarray:
     return np.concatenate([T[:3, 3], R.from_matrix(T[:3, :3]).as_rotvec()])
 
 
-def _quintic_coeffs(x0, v0, a0, x1, T):
-    """Quintic Hermite from (x0, v0, a0) to (x1, 0, 0) in time T (vectorised)."""
+def _quintic_coeffs(x0, v0, a0, x1, T, v1=None):
+    """Quintic Hermite from (x0, v0, a0) to (x1, v1, 0) in time T (vectorised); v1 = 0 unless a
+    goal feed-forward velocity is given (trossen_arm goal_feedforward_velocities)."""
     x0, v0, a0, x1 = map(np.asarray, (x0, v0, a0, x1))
     d = x1 - x0
     c0, c1, c2 = x0, v0, a0 / 2.0
-    c3 = (20 * d - 12 * v0 * T - 3 * a0 * T ** 2) / (2 * T ** 3)
-    c4 = (-30 * d + 16 * v0 * T + 3 * a0 * T ** 2) / (2 * T ** 4)
-    c5 = (12 * d - 6 * v0 * T - a0 * T ** 2) / (2 * T ** 5)
+    if v1 is None:
+        c3 = (20 * d - 12 * v0 * T - 3 * a0 * T ** 2) / (2 * T ** 3)
+        c4 = (-30 * d + 16 * v0 * T + 3 * a0 * T ** 2) / (2 * T ** 4)
+        c5 = (12 * d - 6 * v0 * T - a0 * T ** 2) / (2 * T ** 5)
+    else:
+        v1 = np.asarray(v1)
+        c3 = (20 * d - (8 * v1 + 12 * v0) * T - 3 * a0 * T ** 2) / (2 * T ** 3)
+        c4 = (-30 * d + (14 * v1 + 16 * v0) * T + 3 * a0 * T ** 2) / (2 * T ** 4)
+        c5 = (12 * d - 6 * (v1 + v0) * T - a0 * T ** 2) / (2 * T ** 5)
     return np.stack([c0, c1, c2, c3, c4, c5])
 
 
@@ -91,14 +98,14 @@ class CartesianInterpolator:
         self._t0 = 0.0
         self._T = 1.0
 
-    def set_goal(self, T_goal: np.ndarray, duration: float, t_now: float):
+    def set_goal(self, T_goal: np.ndarray, duration: float, t_now: float, v_goal=None):
         duration = max(float(duration), 1e-3)
         self._R_goal = T_goal[:3, :3].copy()
         # rotation expressed as r = log(R_goal^T R) in the goal frame
         r0 = R.from_matrix(self._R_goal.T @ self.Rm).as_rotvec()
         dr0 = self._R_goal.T @ self.w
         ddr0 = self._R_goal.T @ self.al
-        self._Cp = _quintic_coeffs(self.p, self.v, self.a, T_goal[:3, 3], duration)
+        self._Cp = _quintic_coeffs(self.p, self.v, self.a, T_goal[:3, 3], duration, v_goal)
         self._Cr = _quintic_coeffs(r0, dr0, ddr0, np.zeros(3), duration)
         self._t0, self._T = t_now, duration
         self.active = True
@@ -272,7 +279,7 @@ class SimArm:
         return p_to_T(p)
 
     def move_p(self, pose, duration: float = 3.0, blocking: bool = False, use_joint_interp: bool = False,
-               safe_z_min: float = -0.120) -> bool:
+               safe_z_min: float = -0.120, v_ff=None) -> bool:
         T_target = p_to_T(pose)
         T_raw = T_target @ self.C_inv
         if T_raw[2, 3] < safe_z_min:
@@ -288,12 +295,13 @@ class SimArm:
             # hand over from joint mode: start the interpolator at the current set-point
             self.cinterp.reset(self.fk_raw(self.q_cmd))
             self.mode = "cartesian"
-        self.cinterp.set_goal(T_raw, duration, self.t)
+        self.cinterp.set_goal(T_raw, duration, self.t, v_ff)
         return True
 
     def move_p_in_cam(self, p_in_cam, duration: float = 3.0, blocking: bool = False,
-                      use_joint_interp: bool = False, safe_z_min: float = -0.120) -> bool:
-        return self.move_p(self.p_in_cam_to_p_in_base(p_in_cam), duration, blocking, use_joint_interp, safe_z_min)
+                      use_joint_interp: bool = False, safe_z_min: float = -0.120, v_ff_in_cam=None) -> bool:
+        v_ff = None if v_ff_in_cam is None else self.T_base_in_cam[:3, :3].T @ np.asarray(v_ff_in_cam)
+        return self.move_p(self.p_in_cam_to_p_in_base(p_in_cam), duration, blocking, use_joint_interp, safe_z_min, v_ff)
 
     def move_j(self, joints, duration: float = 3.0, blocking: bool = False) -> bool:
         joints = np.asarray(joints, dtype=np.float64)

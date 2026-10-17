@@ -47,6 +47,9 @@ class SimController:
         self.open_goal_time = float(c.get("open_gripper_goal_time", 1.0))
         self.grasp_latch = bool(c.get("grasp_latch", False))
         self.fix_rotation = bool(c.get("fix_rotation", False))
+        # not in the real controller: pass the plan's velocity as the driver's goal feed-forward
+        # velocity (trossen_arm set_cartesian_positions(goal_feedforward_velocities=...)); 0 = off
+        self.feedforward_gain = float(c.get("feedforward_gain", 0.0))
 
         sides = list(arms)
         self.shared_traj = {s: [] for s in sides}
@@ -176,8 +179,15 @@ class SimController:
                     self.fixed_rot[side] = actual[3:].copy()
                 cmd[3:] = self.fixed_rot[side]
             self.last_cmd[side] = cmd.copy()
+            v_ff = None
+            if self.feedforward_gain > 0 and len(traj) > 1:
+                i1 = min(idx + self.step_stride, len(traj) - 1)
+                i0 = max(i1 - self.step_stride, 0)
+                if i1 > i0:     # the servo walks the plan at step_stride indices per tick
+                    v_ff = self.feedforward_gain * (np.asarray(traj[i1][:3]) - np.asarray(traj[i0][:3])) \
+                        * (self.step_stride / (i1 - i0)) / dt
             ok = arm.move_p_in_cam(cmd, duration=dt * self.duration_smooth_param, blocking=False,
-                                   safe_z_min=self.safe_z_min)
+                                   safe_z_min=self.safe_z_min, v_ff_in_cam=v_ff)
             if not ok:
                 self.n_ik_fail[side] += 1
                 self.shared_traj[side] = []

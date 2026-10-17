@@ -89,7 +89,7 @@ Notes on the modelling choices (all in `configs/serve_bread.yaml`):
 
 ### Why grasps land above the bread's centre
 
-Measured over 32 grasps (`scripts/grasp_test.py`, `scripts/diagnose_episode.py`), the
+Measured over 32 grasps (`scripts/grasp_height.py`, `scripts/grasp_test.py`), the
 fingertip point closes ≈ 1.6–2.2 cm above the bread's centre (the croissant is 5 cm tall).
 The offset adds up from three parts of the real pipeline, all reproduced faithfully:
 
