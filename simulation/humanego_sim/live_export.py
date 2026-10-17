@@ -87,7 +87,7 @@ def export_live(env, out_root: str, key: str) -> str:
                   "initial_joints": {s: list(env.initial_joints(s)) for s in env.sides}, "home_joints": r.home_joints,
                   "gripper_joint": r.gripper_joint, "gripper_joint_open": r.gripper_joint_open,
                   "gripper_joint_closed": r.gripper_joint_closed, "gripper_reset_qpos": r.gripper_reset_qpos,
-                  "finger_bodies": r.finger_bodies},
+                  "finger_bodies": r.finger_bodies, "grip_sense": r.grip_sense, "finger_gap_closed": r.finger_gap_closed},
         "T_base_in_world": {s: flat(env.arms[s].T_base_in_world) for s in env.sides},
         "T_base_in_cam": {s: flat(env.arms[s].T_base_in_cam) for s in env.sides},
         "T_cam_in_world": flat(env.T_cam_in_world),

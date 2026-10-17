@@ -352,6 +352,19 @@ class SimArm:
         g = float(self.d.qpos[self.g_qadr])
         return float(np.clip((g - r.gripper_joint_closed) / (r.gripper_joint_open - r.gripper_joint_closed), 0.0, 1.0))
 
+    def finger_opening(self) -> float:
+        """Gap between the finger pads (m), from the finger bodies (0 = closed on air)."""
+        if not hasattr(self, "_finger_ids"):
+            self._finger_ids = [self.m.body(self.prefix + b).id for b in self.robot.finger_bodies]
+        a, b = self._finger_ids[:2]
+        return float(np.linalg.norm(self.d.xpos[a] - self.d.xpos[b])) - self.robot.finger_gap_closed
+
+    def holding_nothing(self, q_empty: float, gap_empty: float = 0.015) -> bool:
+        """Grip check from proprioception only: has the gripper closed on air?"""
+        if self.robot.grip_sense == "gap":
+            return self.finger_opening() < gap_empty
+        return self.get_gripper_q() < q_empty
+
     def gripper_cmd_closed(self) -> bool:
         r = self.robot
         return abs(self._g_to - r.gripper_closed) < abs(self._g_to - r.gripper_open)

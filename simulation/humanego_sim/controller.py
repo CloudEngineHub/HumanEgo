@@ -66,6 +66,7 @@ class SimController:
         self.ga_hold = float(ga.get("close_hold", 0.6))            # s holding still while the fingers close
         self.ga_max_tries = int(ga.get("regrasp_max", 2))
         self.ga_q_empty = float(ga.get("q_empty", 0.10))           # gripper opening (0..1) that means nothing held
+        self.ga_gap_empty = float(ga.get("gap_empty", 0.015))      # m between the pads ("gap" sensing grippers)
         self.ga_cooldown = float(ga.get("regrasp_cooldown", 1.2))  # s with the gripper open before a new attempt
         self.ga_retry_down = float(ga.get("retry_lower", 0.005))   # each re-grasp aims this much lower ...
         self.ga_retry_in = float(ga.get("retry_inward", 0.01))     # ... and this much closer to the bread's middle
@@ -237,7 +238,7 @@ class SimController:
             if not want_close:
                 gs.update(state="free", target=None)
                 return None, False
-            if arm.get_gripper_q() < self.ga_q_empty:  # nothing between the fingers
+            if arm.holding_nothing(self.ga_q_empty, self.ga_gap_empty):   # nothing between the fingers
                 gs["empty_t"] = gs["empty_t"] if gs["empty_t"] is not None else self.t
                 if self.t - gs["empty_t"] > 0.3 and gs["tries"] < self.ga_max_tries:
                     self._regrasp(side, arm, "empty")

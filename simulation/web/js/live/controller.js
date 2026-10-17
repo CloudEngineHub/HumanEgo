@@ -19,7 +19,7 @@ export class SimController {
     const ga = c.grasp_assist || {};
     this.ga = { on: !!ga.enabled, refine: ga.refine ?? true, lat: ga.lateral_gain ?? 0.7, alongMax: ga.along_max ?? 0.045,
       upMax: ga.height_max ?? 0.004, upMin: ga.height_min ?? -0.008, tol: ga.arrive_tol ?? 0.01, timeout: ga.approach_timeout ?? 1.5,
-      hold: ga.close_hold ?? 0.6, maxTries: ga.regrasp_max ?? 2, qEmpty: ga.q_empty ?? 0.1, cool: ga.regrasp_cooldown ?? 1.2,
+      hold: ga.close_hold ?? 0.6, maxTries: ga.regrasp_max ?? 2, qEmpty: ga.q_empty ?? 0.1, gapEmpty: ga.gap_empty ?? 0.015, cool: ga.regrasp_cooldown ?? 1.2,
       down: ga.retry_lower ?? 0.005, inward: ga.retry_inward ?? 0.01 };
     this.t = 0; this.geom = {}; this.Tcw = null;
     this.gpShared = o(null); this.gpActive = o(null);
@@ -63,7 +63,7 @@ export class SimController {
     if (g.state === 'closing') { if (this.t - g.t0 >= G.hold) { g.state = 'holding'; g.t0 = this.t; g.emptyT = null; } return [g.target, true]; }
     if (g.state === 'holding') {
       if (!want) { g.state = 'free'; g.target = null; return [null, false]; }
-      if (arm.gripperQ() < G.qEmpty) {
+      if (arm.holdingNothing(G.qEmpty, G.gapEmpty)) {
         if (g.emptyT === null) g.emptyT = this.t;
         if (this.t - g.emptyT > 0.3 && g.tries < G.maxTries) { this._regrasp(side, arm, 'empty'); return [null, false]; }
       } else g.emptyT = null;

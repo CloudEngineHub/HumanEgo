@@ -127,6 +127,37 @@ on the rounded top, above the bread's widest section), independently of grid res
 crumb stiffness or friction (`scripts/grasp_test.py` replays recorded grasp poses with any physics). The
 rigid + adhesion proxy hid this.
 
+## Grasp skill in the low-level controller
+
+The production controller only follows the plan and toggles the gripper on the policy's
+grasp signal. An audit of every arm (`scripts/grasp_audit.py`) showed where that loses bread:
+the left arm pinched the 7.4 cm danish near its end, high or off to the side and it slipped
+out when lifted; some grasps closed on air; a few breads stayed wedged in the opened hand.
+`control.grasp_assist` adds a grasp skill that uses only what the real robot has, the
+gripper reading and its own perception of the bread at t = 0 (Python and browser):
+
+1. **Refine** the plan's pinch point: pull it onto the perceived bread's long axis, cap its
+   offset from the bread's centre along the axis and its height above the centre.
+2. **Close on arrival**: keep the gripper open until the arm has reached that point, and hold
+   still while the fingers close.
+3. **Check the grip**: if the gripper closed on air or the bread slipped out on the way up
+   (the gripper reading collapses), reopen and let the policy re-approach; each retry aims
+   lower and closer to the bread's middle. The empty check reads the gripper joint, or the
+   gap between the pads for the underactuated 2F-85, which closes its driver joint almost
+   fully around a bread (the real one reports object detection).
+
+Same 32 held-out scenes, `soft_v5` settings:
+
+| | per arm | right | left | both served |
+|---|---|---|---|---|
+| production controller behaviour | 70 % | 91 % | 50 % | 50 % |
+| + refine & close on arrival & re-grasp | 77 % | 91 % | 63 % | 56 % |
+| + adaptive re-grasp (lower, more central) | **80 %** | **94 %** | **66 %** | **63 %** |
+
+Releasing differently (setting the bread down first, lifting or backing the open hand out)
+did not help and is left off (`control.release`). Franka (24 scenes): 33 % → 42 %; UR5e:
+38 % → 46 % with pad-gap sensing.
+
 ## Live mode: the policy in your browser
 
 `web/js/live/` is a line-by-line port of the Python stack to JavaScript:

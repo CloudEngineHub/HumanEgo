@@ -58,6 +58,11 @@ class RobotSpec:
     gripper_reset_qpos: Dict[str, float] = field(default_factory=dict)   # joints teleported at reset (open)
     gripper_force_param: bool = False   # whether physics.gripper_force applies to this gripper's actuator
     gripper_kp_scale: float = 1.0       # gripper servo stiffness x Menagerie (how hard it squeezes a blocked object)
+    # how the controller tells "holding" from "closed on air": the gripper joint reading ("q"), or the
+    # gap between the finger bodies minus their gap when closed on air ("gap"; underactuated 2F-85,
+    # whose driver joint closes almost fully around a bread - the real one reports object detection)
+    grip_sense: str = "q"
+    finger_gap_closed: float = 0.0      # m between the finger bodies when closed on air
     kp_scale: Optional[float] = None    # None -> physics.arm_kp_scale from the config
     attach: List[dict] = field(default_factory=list)   # sub-models attached to a site, e.g. a gripper
     tool_site_spec: Optional[dict] = None   # {"body":..., "pos":[...]} adds the tool site if the MJCF has none
@@ -155,6 +160,8 @@ ROBOTS: Dict[str, RobotSpec] = {
         gripper_force=40.0,          # Menagerie caps the 2F-85 tendon at +-5; the real gripper squeezes far harder
         reach=0.85,
         finger_bodies=["gripper/left_pad", "gripper/right_pad"],
+        grip_sense="gap",
+        finger_gap_closed=0.0149,
         gripper_force_param=True,
         gripper_joint="gripper/right_driver_joint",
         gripper_joint_open=0.0,
