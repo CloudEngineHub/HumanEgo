@@ -68,7 +68,7 @@ def export_live(env, out_root: str, key: str) -> str:
         "robot": {"name": r.name, "arm_joints": r.arm_joints, "arm_actuators": r.arm_actuators,
                   "gripper_actuator": r.gripper_actuator, "gripper_open": r.gripper_open, "gripper_closed": r.gripper_closed,
                   "tool_site": r.tool_site, "R_tool_to_ee": flat(r.R_tool_to_ee),
-                  "initial_joints": r.initial_joints, "home_joints": r.home_joints,
+                  "initial_joints": {s: list(env.initial_joints(s)) for s in env.sides}, "home_joints": r.home_joints,
                   "gripper_joint": r.gripper_joint, "gripper_joint_open": r.gripper_joint_open,
                   "gripper_joint_closed": r.gripper_joint_closed, "gripper_reset_qpos": r.gripper_reset_qpos,
                   "finger_bodies": r.finger_bodies},

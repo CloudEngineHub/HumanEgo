@@ -49,6 +49,8 @@ class RobotSpec:
     finger_bodies: List[str] = field(default_factory=list)   # bodies that get the soft-bread adhesion proxy
     reach: float = 0.70            # m, nominal reach (for sampling / UI)
     web_name: str = ""
+    # joint-space mirror (left <-> right about the base xz-plane): q_mirror = sign * q
+    mirror_sign: Optional[List[float]] = None
     # gripper opening measurement: joint whose qpos maps linearly from closed -> open
     gripper_joint: str = ""
     gripper_joint_open: float = 1.0
@@ -90,7 +92,7 @@ ROBOTS: Dict[str, RobotSpec] = {
         # cfg/inference/serve_bread/RobotArmTrossen{Left,Right}.yaml (real rig)
         initial_joints={
             "right": [-0.622, 2.511, 1.697, -1.526, -0.936, -2.526],
-            "left": [0.470, 2.340, 1.589, -1.283, 0.812, 2.300],
+            "left": [0.470, 2.340, 1.589, -1.283, 0.812, 2.300],   # rig.mirror_left_start: mirror of "right"
         },
         home_joints=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         gripper_force=12.0,
@@ -102,6 +104,7 @@ ROBOTS: Dict[str, RobotSpec] = {
         gripper_joint_closed=0.0,
         gripper_reset_qpos={"right_carriage_joint": 0.044, "left_carriage_joint": 0.044},
         gripper_force_param=True,
+        mirror_sign=[-1, 1, 1, 1, -1, -1],
     ),
     # Franka Emika Panda + Franka Hand (MuJoCo Menagerie). Fingers slide along the hand's y axis.
     "franka_panda": RobotSpec(

@@ -28,6 +28,9 @@ rig:
             [0.79863551, 0.0, -0.60181502, 0.22907588], [0.0, 0.0, 0.0, 1.0]]
     left:  [[0.0, -1.0, 0.0, -0.323765], [-0.60181502, 0.0, -0.79863551, 0.10437084],
             [0.79863551, 0.0, -0.60181502, 0.22907588], [0.0, 0.0, 0.0, 1.0]]
+  # The real rig's left start pose is not the mirror of the right one; in simulation that alone
+  # costs the left arm ~15 points of success. true = start the left arm at the exact mirror.
+  mirror_left_start: false
   table:
     x_min: -0.35           # edge under the robot frame
     x_max: 0.98

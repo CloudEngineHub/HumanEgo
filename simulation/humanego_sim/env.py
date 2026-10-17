@@ -105,7 +105,7 @@ class ServeBreadSim:
                 continue
             self.set_object_pose(name, *pose)
         for s, arm in self.arms.items():
-            q = (arm_q or {}).get(s, self.robot.initial_joints[s])
+            q = (arm_q or {}).get(s, self.initial_joints(s))
             arm.set_j_instant(q, gripper=self.robot.gripper_open)
         mujoco.mj_forward(self.m, self.d)
         # let objects settle under gravity with the arms holding position
@@ -116,6 +116,14 @@ class ServeBreadSim:
         for arm in self.arms.values():
             arm.t = 0.0
             arm._g_t0 = 0.0
+
+    def initial_joints(self, side: str):
+        """Real-rig start pose; with rig.mirror_left_start the left arm starts at the exact mirror of
+        the right arm (the real rig's left start pose is not symmetric, which costs it success)."""
+        r = self.robot
+        if side == "left" and self.cfg["rig"].get("mirror_left_start") and r.mirror_sign:
+            return [a * b for a, b in zip(r.mirror_sign, r.initial_joints["right"])]
+        return r.initial_joints[side]
 
     def default_scene(self) -> dict:
         sc = self.cfg["scene"]
