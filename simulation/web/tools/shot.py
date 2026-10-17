@@ -29,7 +29,7 @@ async def main(a):
             url += ("&" if "?" in url else "?") + "&".join(qs)
         await pg.goto(url, wait_until="networkidle", timeout=120000)
         try:
-            await pg.wait_for_selector("body[data-ready='1']", timeout=90000)
+            await pg.wait_for_selector("body[data-ready='1']", state="attached", timeout=90000)
         except Exception:
             logs.append("[shot] page never became ready")
         await pg.wait_for_timeout(a.wait)

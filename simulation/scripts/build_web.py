@@ -190,7 +190,10 @@ if __name__ == "__main__":
     built = []
     if not args.manifest_only:
         for spec in args.configs.split(","):
-            robot, camera, mode = spec.split(":")
-            print(f"[web] building {robot} / {camera} / {mode}")
-            built.append(build_config(robot, camera, mode, args.n, args.workers, args.seed, overrides))
+            parts = spec.split(":")
+            robot, camera, mode = parts[:3]
+            n = int(parts[3]) if len(parts) > 3 else args.n
+            print(f"[web] building {robot} / {camera} / {mode} ({n} rollouts)", flush=True)
+            built.append(build_config(robot, camera, mode, n, args.workers, args.seed, overrides))
+            write_manifest(built, args.tuning)         # usable after every config
     write_manifest(built, args.tuning)

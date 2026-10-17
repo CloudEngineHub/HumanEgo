@@ -129,7 +129,7 @@ def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
             a.biasprm[2] = -kv_ratio * kp
             a.forcerange = [a.forcerange[0] * 2.0, a.forcerange[1] * 2.0]
         elif a.name == robot.gripper_actuator and robot.gripper_force_param:
-            f = float(phys.get("gripper_force", robot.gripper_force))
+            f = float(phys.get("gripper_force", robot.gripper_force)) if robot.name == "trossen_wxai" else robot.gripper_force
             a.forcerange = [-f, f]
             a.forcelimited = 1
     return child

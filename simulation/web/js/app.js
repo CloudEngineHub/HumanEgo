@@ -20,6 +20,7 @@ async function boot() {
   state.mode = d.mode || man.configs[0].mode;
   const qs = new URLSearchParams(location.search);
   for (const k of ['robot', 'camera', 'mode']) if (qs.get(k)) state[k] = qs.get(k);
+  if (qs.get('kiosk')) { document.body.classList.add('kiosk'); if (qs.get('kiosk') === 'clean') document.body.classList.add('nohud'); }
   renderStats();
   renderPills();
   renderResultsTable();
