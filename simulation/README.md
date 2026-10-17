@@ -45,6 +45,16 @@ Batch success rate over randomized initial conditions (paper protocol):
 python simulation/scripts/evaluate.py --n 40 --workers 8
 ```
 
+The tuned controller and grasp skill for each robot are in `configs/tuned/<robot>.json`
+(parameters plus their held-out score). To compare them with the production settings on
+the same scenes:
+
+```bash
+GA='control.grasp_assist={"enabled": true}'
+python simulation/scripts/compare_params.py --sets production=- tuned=simulation/configs/tuned/trossen_wxai.json --set "$GA"
+python simulation/scripts/compare_params.py --sets tuned=simulation/configs/tuned/ur5e.json --set "$GA" --set robot='"ur5e"' --n 24
+```
+
 Headless rendering uses `MUJOCO_GL=egl` (set automatically).
 
 ## What is simulated, and how faithfully
@@ -152,11 +162,33 @@ Same 32 held-out scenes, `soft_v5` settings:
 |---|---|---|---|---|
 | production controller behaviour | 70 % | 91 % | 50 % | 50 % |
 | + refine & close on arrival & re-grasp | 77 % | 91 % | 63 % | 56 % |
-| + adaptive re-grasp (lower, more central) | **80 %** | **94 %** | **66 %** | **63 %** |
+| + adaptive re-grasp (lower, more central) | 80 % | 94 % | 66 % | 63 % |
+| + skill and controller re-tuned together (`soft_v6`) | **81–83 %** | 88 % | **75–78 %** | **69 %** |
+
+`soft_v6` searched the skill's knobs together with the controller's (one batch reached the
+loop's target; its candidates were then re-checked on the held-out scenes, a second
+independent set of 32 scenes gives 78 % per arm). It grasps more top-down (gripper held 10°
+steeper than the plan), pinches at the perceived centre height, within 3.8 cm of the
+bread's middle, and tracks fast (goal time 0.2 s). The same skill on the production
+controller settings scores 62 %; without it 41 %.
 
 Releasing differently (setting the bread down first, lifting or backing the open hand out)
-did not help and is left off (`control.release`). Franka (24 scenes): 33 % → 42 %; UR5e:
-38 % → 46 % with pad-gap sensing.
+did not help and is left off (`control.release`).
+
+The other hands got the same treatment: a finer collision skin for the Franka's small pads
+(`physics.soft.surface: fine`), pad-gap grip sensing for the 2F-85, then the skill and
+controller re-tuned per robot (`autotune_runs/franka_v2`, `ur5e_v2`). Per arm on 24 held-out
+scenes (seed 7777):
+
+| | `*_v1` tuned, no skill | production settings + skill | **`*_v2` (skill + per-robot tuning)** |
+|---|---|---|---|
+| Franka Panda | 33 % | 25 % | **60 %** (right 75 %, left 46 %) |
+| UR5e + 2F-85 | 38 % | 52 % | **71 %** (right 96 %, left 46 %) |
+
+The Franka settled on a slightly steeper gripper (2.7°), the tool point 1 cm shallower
+and up to 3 re-grasps; the UR5e on a fast EMA (0.53), a 9° more level gripper and a tight
+pull onto the bread's axis (gain 0.95, within 1.7 cm of its middle). The left arm (mirrored
+view, wider danish) is the weak side on every robot.
 
 ## Live mode: the policy in your browser
 
@@ -204,7 +236,8 @@ python simulation/scripts/autotune_validate.py --name my_rig --top 4 --min_iter 
 ```
 
 re-evaluates the best candidates and the production settings on the same held-out scenes
-and writes `final.json` (what `build_web.py --params` uses).
+and writes `final.json` (what `build_web.py --params` uses; the shipped results are copied
+to `configs/tuned/`).
 
 **Runs `soft_v4` → `soft_v5` (soft bread, two arms; per-arm success on the same 32 held-out scenes):**
 

@@ -142,6 +142,9 @@ def tuning_summary(name):
     return {"batches": batches, "note": note, "best": best}
 
 
+TUNING_NOTE = None     # set from --tuning_note
+
+
 def write_manifest(configs, tuning_name):
     man_p = os.path.join(WEB, "data", "manifest.json")
     old = json.load(open(man_p)) if os.path.exists(man_p) else {"configs": []}
@@ -184,6 +187,8 @@ def write_manifest(configs, tuning_name):
                          "small pads)."),
         "tuning": tuning_summary(tuning_name),
     }
+    if TUNING_NOTE and man["tuning"]:
+        man["tuning"]["note"] = TUNING_NOTE
     with open(man_p, "w") as f:
         json.dump(man, f, separators=(",", ":"))
     print(f"[web] manifest: {len(cfgs)} configs, {sum(len(c['rollouts']) for c in cfgs)} rollouts")
@@ -198,12 +203,18 @@ if __name__ == "__main__":
     ap.add_argument("--params", default=None, help="tuned parameters JSON (best.json) to apply")
     ap.add_argument("--tuning", default="bimanual_v1")
     ap.add_argument("--manifest-only", action="store_true")
+    ap.add_argument("--set", action="append", default=[], help="extra override, e.g. control.grasp_assist={\"enabled\": true}")
+    ap.add_argument("--tuning_note", default=None, help="HTML note under the tuning plot")
     args = ap.parse_args()
+    TUNING_NOTE = args.tuning_note
     overrides = {}
     if args.params:
         from autotune.params import params_to_overrides
         best = json.load(open(args.params))
         overrides = params_to_overrides(best["params"], load_config())
+    if args.set:
+        from evaluate import parse_sets
+        overrides = deep_update(overrides, parse_sets(args.set))
     built = []
     if not args.manifest_only:
         for spec in args.configs.split(","):
