@@ -119,8 +119,12 @@ def tuning_summary(name):
         it = json.load(open(p))
         batches.append({"scores": [round(c["stats"]["per_side_success_rate"], 3) for c in it["candidates"]],
                         "action": it.get("decision", {}).get("action")})
-    best = json.load(open(os.path.join(SIM, "autotune_runs", name, "best.json"))) if os.path.exists(
-        os.path.join(SIM, "autotune_runs", name, "best.json")) else None
+    best = None
+    for fn in ("final.json", "best.json"):          # final.json: winner re-validated on held-out scenes
+        fp = os.path.join(SIM, "autotune_runs", name, fn)
+        if os.path.exists(fp):
+            best = json.load(open(fp))
+            break
     note = ""
     if best:
         v = best.get("validation", {})

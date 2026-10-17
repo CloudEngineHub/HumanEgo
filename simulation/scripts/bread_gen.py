@@ -247,13 +247,13 @@ def _croissant() -> BreadSpec:
         crest_hi = _srgb((236, 156, 52))
         groove_c = _srgb((246, 206, 120))
         under_c = _srgb((222, 160, 80))
-        tip_c = _srgb((168, 82, 26))
+        tip_c = _srgb((186, 98, 32))
         t = np.clip(0.55 * top + 0.45 * n1 + 0.15 * (n2 - 0.5), 0, 1)
         col = crest_hi[None, None] * (1 - t[..., None]) + crest_c[None, None] * t[..., None]
         col = col * (1 - g[..., None] * 0.9) + groove_c[None, None] * g[..., None] * 0.9
         under = _smoothstep(0.25, -0.35, -np.cos(TH))       # bottom of the bread
         col = col * (1 - under[..., None]) + under_c[None, None] * under[..., None]
-        tipw = _smoothstep(0.78, 1.0, d) * (0.6 + 0.4 * n1)
+        tipw = 0.55 * _smoothstep(0.80, 1.0, d) * (0.6 + 0.4 * n1)
         col = col * (1 - tipw[..., None]) + tip_c[None, None] * tipw[..., None]
         col *= (0.92 + 0.16 * n2)[..., None]
         rough = 0.32 + 0.25 * g + 0.15 * n2 + 0.2 * under

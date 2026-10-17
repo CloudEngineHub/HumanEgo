@@ -156,12 +156,35 @@ Searched parameters (`autotune/params.py`): the controller knobs of
 `cfg/inference/serve_bread/Control.yaml` (EMA, look-ahead, stride, goal-time factor,
 safety cage, grasp threshold and look-ahead window, idle-done release, forced lift),
 the TCP offset, and the bread physics within the range of real crumb (Young's modulus,
-damping, crust friction, gripper force cap). Findings from the loop so far:
+damping, crust friction, gripper force cap). Then
 
-* the production grasp timing (`any` over the whole chunk) is near-optimal — closing later
-  (`grasp_k_any = 15`) misses more grasps;
-* most failures were mislabelled "release" errors: 22 of 25 failed arms never lifted the
-  bread, so the search targets grasping, not placing.
+```bash
+python simulation/scripts/autotune_validate.py --name my_rig --top 4 --min_iter 5 --n 32
+```
+
+re-evaluates the best candidates and the production settings on the same held-out scenes
+and writes `final.json` (what `build_web.py --params` uses).
+
+**Run `soft_v4` (soft bread, two arms, 10 batches × 8 candidates × 14 scenes):**
+
+| | per-arm success, 32 held-out scenes | right (croissant) | left (danish) |
+|---|---|---|---|
+| production `Control.yaml` | 28 % | 28 % | 28 % |
+| tuned | **58 %** | **84 %** | 31 % |
+
+The tuned controller changes three things, all pointing at the grasp-height mechanism above:
+the driver goal time drops from 1.2 s to 0.49 s (`duration_smooth_param` 12 → 4.9) and the
+position EMA from 0.5 to 0.29, so the arm follows the descending plan instead of trailing it,
+and the tool point moves 0.9 cm deeper along the (downward-pitched) approach
+(`tcp_offset` −0.009). Everything else stays near production (look-ahead 46, grasp
+threshold 0.58, `any` closing). The bread physics stays inside real-crumb ranges
+(E = 17 kPa, μ = 0.92, 12.7 N). The left arm stays weak: the danish is 7.4 cm wide against
+an 8.8 cm maximum gripper opening, and the left arm starts from the real rig's asymmetric
+pose and sees a mirrored image. The agent's decisions (`inbox/response_*.json`) record the
+reasoning between batches.
+
+Earlier findings on the rigid-bread proxy: the production grasp timing (`any` over the whole
+chunk) is near-optimal there, and most failures were grasps, not placing.
 
 ## Web viewer (`web/`)
 
