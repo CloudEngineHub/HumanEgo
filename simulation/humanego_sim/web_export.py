@@ -22,6 +22,7 @@ import imageio.v2 as imageio
 import mujoco
 import numpy as np
 import trimesh
+from scipy.spatial.transform import Rotation as R
 
 from .robots import ASSETS
 
@@ -37,7 +38,7 @@ WEB_MATERIALS = {
     "maple": {"color": [1, 1, 1], "map": "assets/textures/maple.jpg", "roughness": 0.55, "metalness": 0.0, "repeat": [2, 2]},
     "frame_black": {"color": [0.05, 0.05, 0.055], "roughness": 0.35, "metalness": 0.6},
     "floor": {"color": [0.72, 0.72, 0.70], "roughness": 0.9, "metalness": 0.0},
-    "plate_mat": {"color": [0.67, 0.78, 0.90], "roughness": 0.12, "metalness": 0.0, "clearcoat": 1.0},
+    "plate_mat": {"color": [0.60, 0.69, 0.86], "roughness": 0.38, "metalness": 0.0, "clearcoat": 0.35},
 }
 
 
@@ -81,7 +82,7 @@ def export_model(env, out_root: str, key: str) -> Dict:
     """Kinematic tree + visual geoms for the browser. `key` names the model, e.g. trossen_wxai_bimanual."""
     m = env.m
     robot = env.robot.name
-    # ---- meshes: one GLB per robot (shared by both arms), objects use the Poly Haven GLBs ----
+    # ---- meshes: one GLB per robot (shared by both arms), objects use their own GLBs ----
     robot_mesh_ids, prefix = [], f"{env.sides[0]}/"
     for g in range(m.ngeom):
         if m.geom_group[g] == 1 and m.geom_type[g] == mujoco.mjtGeom.mjGEOM_MESH:
@@ -142,12 +143,20 @@ def export_model(env, out_root: str, key: str) -> Dict:
     for s in env.sides:
         sid = m.site(f"{s}/{env.robot.tool_site}").id
         tool_sites[s] = {"body": int(m.site_bodyid[sid]), "pos": _r(m.site_pos[sid]), "quat": _r(m.site_quat[sid])}
+    # soft breads: textured GLB deformed in the browser by the same trilinear grid as the flex
+    soft = {}
+    for name, sb in env.soft.items():
+        om = env.meta["objects"][name]
+        soft[name] = {"asset": f"assets/objects/{om['kind']}.glb", "kind": om["kind"], "cells": om["soft"]["cells"],
+                      "lo": _r(om["soft"]["lo"]), "hi": _r(om["soft"]["hi"]), "nodes": _full_grid(sb, [int(b) for b in sb.bodies], -1)}
+    layout = frame_layout(env)
     model = {
         "key": key, "robot": robot, "robot_label": env.robot.label, "camera": env.cam.name,
         "camera_label": env.cam.label, "mode": env.cfg.get("mode"), "sides": env.sides, "nq": int(m.nq),
         "bodies": bodies, "geoms": geoms, "materials": WEB_MATERIALS, "tool_sites": tool_sites,
         "policy_camera": {"T_cam_in_world": _r(env.T_cam_in_world), "K": _r(env.K), "width": env.W, "height": env.H},
-        "objects": {k: {"qadr": int(env.obj_free_qadr[k])} for k in env.obj_bodies},
+        "objects": {k: ({"soft": True} if k in env.soft else {"qadr": int(env.obj_free_qadr[k])}) for k in env.obj_names},
+        "soft": soft, "frame_layout": layout,
         "finger_bodies": list(env.robot.finger_bodies),
     }
     p = os.path.join(out_root, "data", "models", f"{key}.json")
@@ -157,17 +166,77 @@ def export_model(env, out_root: str, key: str) -> Dict:
     return model
 
 
+def _full_grid(sb, vals, fill):
+    """Per-corner values on the full grid (corners MuJoCo pinned to the world get `fill`)."""
+    out, it = [], iter(vals)
+    for v in sb.valid:
+        out.append(next(it) if v else fill)
+    return out
+
+
+def frame_layout(env) -> Dict:
+    """Columns of a rollout frame: qpos entries except the soft-bread grids, then one pose
+    (pos + wxyz quat) per soft bread. The grids' deformation goes to a separate sparse track."""
+    grid_q = set()
+    for sb in env.soft.values():
+        grid_q.update(int(i) for i in sb.qidx)
+    keep = [i for i in range(env.m.nq) if i not in grid_q]
+    return {"q_keep": keep, "soft": sorted(env.soft)}
+
+
+def _soft_tracks(env, q_frames: List[np.ndarray], times: List[float], eps=3e-4, stride=2):
+    """Per soft bread: rigid pose per frame + sparse deformation residuals (0.1 mm ints, bread frame)."""
+    poses = {n: [] for n in env.soft}
+    deform = {}
+    for name, sb in env.soft.items():
+        res_all = []
+        for q in q_frames:
+            P = sb.p0 + q[sb.qidx].reshape(-1, 3)
+            Rm, t = sb.fit(P)
+            x, y, z, w = R.from_matrix(Rm).as_quat()
+            poses[name].append([round(float(v), 4) for v in t] + [round(float(v), 4) for v in (w, x, y, z)])
+            res_all.append((P - t) @ Rm - sb.local)
+        mags = np.array([np.abs(r).max() for r in res_all])
+        on = mags > eps
+        keep = set()
+        for i in np.nonzero(on)[0]:
+            if i % stride == 0 or not on[i - 1] or (i + 1 < len(on) and not on[i + 1]):
+                keep.add(int(i))
+            if i > 0 and not on[i - 1]:
+                keep.add(int(i - 1))                  # zero frame bounding the run (clean interpolation)
+            if i + 1 < len(on) and not on[i + 1]:
+                keep.add(int(i + 1))
+        ts, rs = [], []
+        for i in sorted(keep):
+            ts.append(round(times[i], 3))
+            if on[i]:
+                full = np.zeros((len(sb.valid), 3), int)
+                full[sb.valid] = np.round(res_all[i] * 1e4).astype(int)
+                rs.append(full.ravel().tolist())
+            else:
+                rs.append(0)
+        deform[name] = {"t": ts, "r": rs}
+    return poses, deform
+
+
 def export_rollout(env, log_dir: str, out_root: str, rid: str, scene_meta: Optional[dict] = None) -> Dict:
     """Recorded episode -> data/rollouts/<rid>.json (+ policy-view mp4)."""
     with open(os.path.join(log_dir, "episode.json")) as f:
         ep = json.load(f)
     m, d = env.m, env.d
     frames = []
-    for fr in ep["frames"]:
-        if "qfull" in fr:
-            q = fr["qfull"]
-            frames.append([round(fr["t"], 3)] + [round(float(v), 3) for v in q])
-            continue
+    if all("qfull" in fr for fr in ep["frames"]):
+        layout = frame_layout(env)
+        keep = np.asarray(layout["q_keep"])
+        qs = [np.asarray(fr["qfull"], float) for fr in ep["frames"]]
+        times = [fr["t"] for fr in ep["frames"]]
+        poses, deform = _soft_tracks(env, qs, times)
+        for k, q in enumerate(qs):
+            row = [round(times[k], 3)] + [round(float(v), 3) for v in q[keep]]
+            for name in layout["soft"]:
+                row += poses[name][k]
+            frames.append(row)
+    for fr in ([] if frames else ep["frames"]):
         q = np.array(d.qpos)  # template
         for s, qs in fr["qpos"].items():
             arm = env.arms[s]
@@ -216,6 +285,7 @@ def export_rollout(env, log_dir: str, out_root: str, rid: str, scene_meta: Optio
     meta = ep["meta"]
     out = {
         "id": rid, "model": None, "fps": 30, "frames": frames, "policy": pol, "policy_video": vid_rel,
+        "deform": deform if env.soft and frames and "qfull" in ep["frames"][0] else {},
         "policy_period": round(P, 4) if ep["policy"] else 0.3,
         "result": meta["result"], "scene": meta["scene_init"], "extra": scene_meta or {},
     }

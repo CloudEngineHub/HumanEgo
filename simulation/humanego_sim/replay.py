@@ -37,8 +37,7 @@ def render_episode_video(env, log_dir: str, out_path: str = None, camera: str = 
                 d.qpos[arm.qadr] = q[:len(arm.qadr)]
                 d.qpos[arm.g_qadr] = q[len(arm.qadr)]
             for name, pq in fr["objects"].items():
-                qa = env.obj_free_qadr[name]
-                d.qpos[qa:qa + 7] = pq
+                env.place_object(name, pq)
         mujoco.mj_forward(m, d)
         r.update_scene(d, camera=camera)
         main = np.ascontiguousarray(r.render()[:, :, ::-1])

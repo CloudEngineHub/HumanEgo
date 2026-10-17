@@ -40,23 +40,37 @@ rig:
 scene:
   # object initial poses on the table: [x, y, yaw_deg]
   plate: [0.47, 0.00, 0.0]
-  # bread yaw ~90 deg = long axis left-right in the image, as in the human demos
+  # bread yaw ~90 deg = long axis left-right in the image, as in the human demos.
+  # Real bimanual rollout: croissant for the right arm, sugar danish loaf for the left.
   bread:
-    right: {type: roll, pose: [0.46, -0.27, 100.0]}
-    left: {type: croissant, pose: [0.46, 0.27, 80.0]}
+    right: {type: croissant, pose: [0.46, -0.27, 95.0]}
+    left: {type: bun, pose: [0.46, 0.27, 85.0]}
   single:                  # used when mode == single (paper layout: plate left, bread right)
     plate: [0.47, 0.11, 0.0]
     bread: {type: croissant, pose: [0.47, -0.15, 95.0]}
 
 physics:
   timestep: 0.002
-  bread_friction: [2.0, 0.02, 0.002]   # effective: real bread deforms around the fingers
-  bread_mass: {croissant: 0.050, roll: 0.065}
-  bread_solref: [0.008, 1.0]
+  # Bread is a soft body: a MuJoCo flex whose surface is interpolated from a trilinear grid
+  # of point masses with volumetric elasticity (humanego_sim/softbody.py). The fingers sink
+  # into the crumb and the grip holds by friction alone.
+  bread_model: soft        # soft | rigid (convex parts + finger adhesion: the earlier proxy)
+  soft:
+    dof: trilinear
+    cells: {croissant: [4, 2, 2], bun: [4, 2, 2]}
+    young: 2.0e+4          # Pa; fresh croissant / brioche crumb is ~5-50 kPa
+    poisson: 0.25
+    damping: 0.002         # s; viscous loss of the crumb
+    radius: 0.001
+  impratio: 100            # stiff friction cone: a held bread does not creep out of the grip
+  bread_friction: [1.0, 0.01, 0.001]   # crust on the rubber finger pads
+  bread_mass: {croissant: 0.050, bun: 0.075}
+  bread_solref: [0.004, 1.0]
   bread_solimp: [0.9, 0.95, 0.001, 0.5, 2.0]
+  bread_condim: 4
   plate_mass: 0.45
   gripper_force: 12.0      # N
-  finger_adhesion: 6.0     # N per finger, soft-bread proxy (0 = rigid bread); active only while closed
+  finger_adhesion: 6.0     # rigid model only: N per finger while closed (soft-bread proxy)
   arm_kp_scale: 4.0        # x Menagerie gains (real Trossen servos track much tighter)
   arm_kv_ratio: 0.08       # extra joint damping relative to kp
 

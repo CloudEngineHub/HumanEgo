@@ -19,6 +19,20 @@ import mujoco
 from .robots import ASSETS
 
 
+def _object_entry(env, n: str) -> dict:
+    om = env.meta["objects"][n]
+    half_h = float(om["extents"][2] / 2) if n != "plate" else 0.0
+    if n in env.soft:            # soft bread: grid corners on world-aligned slide joints
+        sb = env.soft[n]
+        return {"soft": True, "half_height": half_h, "qidx": [int(i) for i in sb.qidx],
+                "nodes": [int(b) for b in sb.bodies], "local": [round(float(v), 6) for v in sb.local.ravel()],
+                "p0": [round(float(v), 6) for v in sb.p0.ravel()]}
+    out = {"qadr": int(env.obj_free_qadr[n]), "body": int(env.obj_bodies[n]), "half_height": half_h}
+    if n == "plate":
+        out["R"] = om["R"]
+    return out
+
+
 def export_live(env, out_root: str, key: str) -> str:
     spec = mujoco.MjSpec.from_file(env.xml_path)
     spec.modelfiledir = ASSETS
@@ -28,6 +42,8 @@ def export_live(env, out_root: str, key: str) -> str:
             spec.delete(g)
     for g in spec.geoms:
         g.material = ""
+    for sk in list(spec.skins):                  # soft-bread skins are visual only (three.js deforms the GLB)
+        spec.delete(sk)
     for m in list(spec.materials):
         spec.delete(m)
     for t in list(spec.textures):
@@ -78,10 +94,7 @@ def export_live(env, out_root: str, key: str) -> str:
         "camera": {"name": env.cam.name, "K": flat(env.K), "width": env.W, "height": env.H,
                    "depth_noise": [env.cam.depth_noise_a, env.cam.depth_noise_b, env.cam.depth_min]},
         "control": env.cfg["control"], "perception": env.cfg.get("perception", {}),
-        "objects": {n: {"qadr": int(env.obj_free_qadr[n]), "body": int(env.obj_bodies[n]),
-                        "half_height": float(env.meta["objects"][n]["extents"][2] / 2) if n != "plate" else 0.0,
-                        **({"R": env.meta["objects"]["plate"]["R"]} if n == "plate" else {})}
-                    for n in env.obj_bodies},
+        "objects": {n: _object_entry(env, n) for n in env.obj_names},
         "default_scene": env.default_scene(),
     }
     with open(os.path.join(out_dir, "spec.json"), "w") as f:

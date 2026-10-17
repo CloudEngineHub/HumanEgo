@@ -29,8 +29,7 @@ def load_state(env, fr):
             d.qpos[arm.qadr] = q[:len(arm.qadr)]
             d.qpos[arm.g_qadr] = q[len(arm.qadr)]
         for name, pq in fr["objects"].items():
-            qa = env.obj_free_qadr[name]
-            d.qpos[qa:qa + 7] = pq
+            env.place_object(name, pq)
     mujoco.mj_forward(m, d)
 
 

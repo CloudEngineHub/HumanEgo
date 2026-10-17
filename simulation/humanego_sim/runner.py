@@ -221,8 +221,8 @@ class EpisodeRunner:
         """Objects appear in mid-air one after another and fall onto the table under physics.
         Recorded with negative time stamps, before perception runs at t = 0."""
         env = self.env
-        names = ["plate"] + sorted(n for n in env.obj_bodies if n != "plate")
-        rest = {n: env.d.qpos[env.obj_free_qadr[n]:env.obj_free_qadr[n] + 7].copy() for n in names}
+        names = ["plate"] + sorted(n for n in env.obj_names if n != "plate")
+        rest = {n: np.asarray(env.object_pose7(n)) for n in names}
         release = {n: 0.15 + 0.22 * i for i, n in enumerate(names)}
         air = {}
         for n in names:
@@ -240,9 +240,7 @@ class EpisodeRunner:
         while t < t_total:
             for n in names:
                 if t < release[n]:
-                    qa, da = env.obj_free_qadr[n], env.obj_free_dadr[n]
-                    env.d.qpos[qa:qa + 7] = air[n]
-                    env.d.qvel[da:da + 6] = 0.0
+                    env.place_object(n, air[n])
             if t >= nxt - 1e-9:
                 snap = env.snapshot()
                 snap["t"] = round(t - t_total, 4)
@@ -359,7 +357,7 @@ class EpisodeRunner:
                 next_rec += rec_dt
             env.step()
             for s in sides:
-                bz = env.d.xpos[env.obj_bodies[f"bread_{s}"]][2]
+                bz = env.object_pos(f"bread_{s}")[2]
                 if bz > self._bread_max_z.get(s, 0.0):
                     self._bread_max_z[s] = float(bz)
             if all(c.wrap_phase == "finished" for c in ctxs.values()):

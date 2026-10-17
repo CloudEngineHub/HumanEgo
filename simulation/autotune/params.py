@@ -4,8 +4,8 @@ Tunable parameters of the simulator and of the low-level controller.
 
 Each `ParamSpec` maps a scalar to a dotted config path. Bounds are kept inside
 physically / operationally plausible ranges: the tuner may make the controller
-better or the soft-bread proxy stronger, but it may not make bread weightless
-or teleport the arm.
+better or the bread softer within the range of real crumb, but it may not make
+bread weightless, sticky or teleport the arm.
 """
 from __future__ import annotations
 
@@ -57,7 +57,15 @@ DEFAULT_SPACE: List[ParamSpec] = [
     ParamSpec("control.idle_time_limit", 0.5, 3.5, 1.5, note="s holding near the plate before release"),
     ParamSpec("control.idle_dist_threshold", 0.04, 0.18, 0.13, note="hand-to-plate distance for release"),
     ParamSpec("control.forced_lift_height", 0.0, 0.10, 0.05, note="post-grasp lift bias, m"),
-    # ---- simulator physics (soft-bread proxy, contact) ----
+    # ---- simulator physics: soft bread (MuJoCo flex) and contact, real-world ranges ----
+    ParamSpec("physics.soft.young", 6e3, 6e4, 2e4, "log", group="physics", note="crumb Young's modulus, Pa"),
+    ParamSpec("physics.soft.damping", 5e-4, 1e-2, 2e-3, "log", group="physics", note="crumb viscous loss, s"),
+    ParamSpec("physics.bread_friction.0", 0.6, 1.5, 1.0, group="physics", note="crust on finger pads"),
+    ParamSpec("physics.gripper_force", 8.0, 35.0, 12.0, group="physics", note="gripper force cap, N (Menagerie: 35)"),
+]
+
+# the earlier rigid-bread proxy (physics.bread_model: rigid)
+RIGID_PHYSICS: List[ParamSpec] = [
     ParamSpec("physics.finger_adhesion", 0.0, 15.0, 6.0, group="physics", note="N per finger while closed"),
     ParamSpec("physics.bread_friction.0", 0.8, 3.0, 2.0, group="physics", note="effective sliding friction"),
     ParamSpec("physics.gripper_force", 6.0, 35.0, 12.0, group="physics", note="N"),
@@ -67,7 +75,8 @@ DEFAULT_SPACE: List[ParamSpec] = [
 def space_from_names(names: Optional[List[str]] = None) -> List[ParamSpec]:
     if not names:
         return list(DEFAULT_SPACE)
-    by = {p.name: p for p in DEFAULT_SPACE}
+    by = {p.name: p for p in RIGID_PHYSICS}
+    by.update({p.name: p for p in DEFAULT_SPACE})
     return [by[n] for n in names]
 
 

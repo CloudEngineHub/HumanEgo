@@ -27,6 +27,7 @@ from scipy.spatial.transform import Rotation as R
 
 from .cameras import CameraSpec
 from .robots import ASSETS, RobotSpec
+from .softbody import add_soft_bread
 
 G_STATIC, G_ROBOT, G_OBJECT, G_COLLISION = 0, 1, 2, 3
 
@@ -169,15 +170,19 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     spec.modelfiledir = ASSETS          # relative asset paths resolve from the assets root
     spec.compiler.degree = False
     spec.compiler.autolimits = True
+    soft = phys.get("bread_model", "soft") == "soft"
     spec.option.timestep = float(phys.get("timestep", 0.002))
-    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    # flex elasticity is only integrated implicitly by the `discrete` (velocity-stepping) integrator
+    spec.option.integrator = (mujoco.mjtIntegrator.mjINT_DISCRETE if soft
+                              else mujoco.mjtIntegrator.mjINT_IMPLICITFAST)
     spec.option.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
-    spec.option.impratio = 10.0
+    # high impratio = stiff friction relative to the normal direction: no slow creep of a held bread
+    spec.option.impratio = float(phys.get("impratio", 100.0 if soft else 10.0))
     spec.visual.global_.offwidth = 1920
     spec.visual.global_.offheight = 1440
     spec.visual.quality.shadowsize = 4096
-    spec.visual.headlight.ambient = [0.35, 0.35, 0.35]
-    spec.visual.headlight.diffuse = [0.45, 0.45, 0.45]
+    spec.visual.headlight.ambient = [0.22, 0.22, 0.22]
+    spec.visual.headlight.diffuse = [0.22, 0.22, 0.22]
     spec.visual.headlight.specular = [0.0, 0.0, 0.0]
     spec.stat.center = [0.45, 0.0, 0.1]
     spec.stat.extent = 1.0
@@ -214,7 +219,9 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     m.rgba = [0.62, 0.62, 0.60, 1.0]
     m.reflectance = 0.0
 
-    for obj in ("croissant", "roll"):
+    kinds = sorted({b["type"] for b in _breads(cfg, mode, sides).values()})
+    bread_vis = {}
+    for obj in kinds:
         t = spec.add_texture()
         t.name = f"{obj}_tex"
         t.type = mujoco.mjtTexture.mjTEXTURE_2D
@@ -222,17 +229,27 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         mm = spec.add_material()
         mm.name = f"{obj}_mat"
         mm.textures[mujoco.mjtTextureRole.mjTEXROLE_RGB] = f"{obj}_tex"
-        mm.specular = 0.05
-        mm.shininess = 0.1
-        me = spec.add_mesh()
-        me.name = f"{obj}_vis"
-        me.file = f"objects/{obj}/{obj}.obj"
+        mm.specular = 0.35             # glossy egg wash
+        mm.shininess = 0.45
         d = os.path.join(ASSETS, "objects", obj)
-        n_col = len([f for f in os.listdir(d) if f.startswith(f"{obj}_col")])
-        for i in range(n_col):
-            mc = spec.add_mesh()
-            mc.name = f"{obj}_col{i}"
-            mc.file = f"objects/{obj}/{obj}_col{i}.obj"
+        if soft:
+            import trimesh
+            fm = trimesh.load(os.path.join(d, f"{obj}_flex.obj"), force="mesh", process=False)
+            me = spec.add_mesh()
+            me.name = f"{obj}_flex"
+            me.uservert = np.asarray(fm.vertices).ravel().tolist()
+            me.userface = np.asarray(fm.faces).ravel().tolist()
+            z = np.load(os.path.join(d, f"{obj}_vis.npz"))
+            bread_vis[obj] = (z["V"], z["F"], z["UV"])
+        else:
+            me = spec.add_mesh()
+            me.name = f"{obj}_vis"
+            me.file = f"objects/{obj}/{obj}.obj"
+            n_col = len([f for f in os.listdir(d) if f.startswith(f"{obj}_col")])
+            for i in range(n_col):
+                mc = spec.add_mesh()
+                mc.name = f"{obj}_col{i}"
+                mc.file = f"objects/{obj}/{obj}_col{i}.obj"
 
     with open(os.path.join(ASSETS, "objects", "plate", "plate_meta.json")) as f:
         pm = json.load(f)
@@ -242,8 +259,8 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     mm = spec.add_material()
     mm.name = "plate_mat"
     mm.rgba = pm["rgba"]
-    mm.specular = 0.6
-    mm.shininess = 0.8
+    mm.specular = 0.25
+    mm.shininess = 0.35
 
     wb = spec.worldbody
 
@@ -253,7 +270,7 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     l.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
     l.pos = [-0.6, 0.8, 2.5]
     l.dir = list(-np.array([-0.6, 0.8, 2.5]) / np.linalg.norm([-0.6, 0.8, 2.5]))
-    l.diffuse = [0.55, 0.55, 0.55]
+    l.diffuse = [0.48, 0.48, 0.48]
     l.specular = [0.15, 0.15, 0.15]
     l.castshadow = True
     l2 = wb.add_light()
@@ -261,7 +278,7 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     l2.type = mujoco.mjtLightType.mjLIGHT_DIRECTIONAL
     l2.pos = [1.5, -1.0, 2.0]
     l2.dir = list(-np.array([1.5, -1.0, 2.0]) / np.linalg.norm([1.5, -1.0, 2.0]))
-    l2.diffuse = [0.25, 0.25, 0.25]
+    l2.diffuse = [0.16, 0.16, 0.16]
     l2.castshadow = False
 
     # ---------------- floor + table ----------------
@@ -343,6 +360,8 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     # ---------------- arms ----------------
     for s in sides:
         child = _load_robot_spec(robot, phys)
+        child.option.impratio = spec.option.impratio      # the parent's options win; avoid the attach warning
+        child.option.integrator = spec.option.integrator
         Tb = geo.T_base_in_world[s].copy()
         Tb[:3, 3] += np.array(robot.mount_offset)
         fr = wb.add_frame()
@@ -352,7 +371,7 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         # soft-bread proxy: real bread deforms around the fingers and gives a form-closure
         # grip even when pinched near its top. Rigid sim bread cannot, so each finger gets an
         # adhesion actuator that the driver switches on only while the gripper is closed.
-        gain = float(phys.get("finger_adhesion", 0.0))
+        gain = 0.0 if soft else float(phys.get("finger_adhesion", 0.0))
         if gain > 0:
             for fb in robot.finger_bodies:
                 act = spec.add_actuator()
@@ -364,21 +383,30 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
 
     # ---------------- objects ----------------
     sc = cfg["scene"]
-    if mode == "single":
-        breads = {"right": sc["single"]["bread"]}
-        plate_pose = sc["single"]["plate"]
-    else:
-        breads = {s: sc["bread"][s] for s in sides}
-        plate_pose = sc["plate"]
+    breads = _breads(cfg, mode, sides)
+    plate_pose = sc["single"]["plate"] if mode == "single" else sc["plate"]
 
     bm = phys.get("bread_mass", {})
     bf = phys.get("bread_friction", [1.0, 0.01, 0.0005])
-    bsr = phys.get("bread_solref", [0.01, 1.0])
+    contact = {"friction": list(bf), "condim": int(phys.get("bread_condim", 4)),
+               "solref": list(phys.get("bread_solref", [0.004, 1.0])),
+               "solimp": list(phys.get("bread_solimp", [0.9, 0.95, 0.001, 0.5, 2.0]))}
     obj_meta = {}
     for s, bd in breads.items():
         kind = bd["type"]
         x, y, yaw = bd["pose"]
         ext = _mesh_extents(kind)
+        mass = float(bm.get(kind, 0.055))
+        if soft:
+            sp_cfg = dict(phys.get("soft", {}))
+            cells = sp_cfg.get("cells", {})
+            sp_cfg["cells"] = cells.get(kind, [4, 2, 2]) if isinstance(cells, dict) else cells
+            # compiled undeformed with yaw 0; the episode reset places it (env.set_object_pose)
+            grid = add_soft_bread(spec, f"bread_{s}", kind, [x, y, ext[2] / 2 + 0.0008], mass,
+                                  bread_vis[kind], f"{kind}_flex", f"{kind}_mat", sp_cfg, contact,
+                                  flex_group=G_COLLISION, skin_group=G_OBJECT)
+            obj_meta[f"bread_{s}"] = {"kind": kind, "extents": ext.tolist(), "side": s, "soft": grid}
+            continue
         b = wb.add_body()
         b.name = f"bread_{s}"
         b.pos = [x, y, ext[2] / 2 + 0.0005]
@@ -399,18 +427,18 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         # MuJoCo derives mass from geom volume x density: pick the density that gives the real weight
         import trimesh
         vol = sum(trimesh.load(os.path.join(d, f"{kind}_col{i}.obj"), force="mesh").convex_hull.volume for i in range(n_col))
-        dens = float(bm.get(kind, 0.055)) / max(vol, 1e-9)
+        dens = mass / max(vol, 1e-9)
         for i in range(n_col):
             gc = b.add_geom()
             gc.name = f"bread_{s}_col{i}"
             gc.type = mujoco.mjtGeom.mjGEOM_MESH
             gc.meshname = f"{kind}_col{i}"
             gc.group = G_COLLISION
-            gc.friction = list(bf)
-            gc.solref = list(bsr)
-            gc.solimp = list(phys.get("bread_solimp", [0.9, 0.95, 0.001, 0.5, 2.0]))
+            gc.friction = contact["friction"]
+            gc.solref = contact["solref"]
+            gc.solimp = contact["solimp"]
             gc.priority = 1          # bread's (soft) contact parameters win against the finger pads
-            gc.condim = int(phys.get("bread_condim", 4))
+            gc.condim = contact["condim"]
             gc.rgba = [0.8, 0.5, 0.2, 0.0]
             gc.density = dens
         obj_meta[f"bread_{s}"] = {"kind": kind, "extents": ext.tolist(), "side": s}
@@ -491,6 +519,13 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         "nq": int(model.nq),
     }
     return xml_path, meta
+
+
+def _breads(cfg: dict, mode: str, sides: List[str]) -> Dict[str, dict]:
+    sc = cfg["scene"]
+    if mode == "single":
+        return {"right": sc["single"]["bread"]}
+    return {s: sc["bread"][s] for s in sides}
 
 
 def _mesh_extents(kind: str) -> np.ndarray:

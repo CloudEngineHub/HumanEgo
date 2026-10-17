@@ -22,6 +22,7 @@ from scipy.spatial.transform import Rotation as R
 from .cameras import CameraSpec, get_camera
 from .driver import SimArm, T_from
 from .robots import RobotSpec, get_robot
+from .softbody import SoftBody
 from .scene import G_ROBOT, build_scene, yaw_quat
 
 SIM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -65,16 +66,21 @@ class ServeBreadSim:
         self.K = self.cam.K.copy()
         self.H, self.W = self.cam.height, self.cam.width
 
-        # object bodies
-        self.obj_bodies = {name: self.m.body(name).id for name in self.meta["objects"]}
+        # objects: rigid ones are free bodies, soft breads are flexes (see softbody.py)
+        self.obj_names: List[str] = list(self.meta["objects"])
+        self.soft: Dict[str, SoftBody] = {n: SoftBody(self.m, n, o["soft"])
+                                          for n, o in self.meta["objects"].items() if "soft" in o}
+        self.obj_bodies = {name: self.m.body(name).id for name in self.obj_names if name not in self.soft}
         self.obj_free_qadr = {name: self.m.jnt_qposadr[self.m.body_jntadr[bid]] for name, bid in self.obj_bodies.items()}
         self.obj_free_dadr = {name: self.m.jnt_dofadr[self.m.body_jntadr[bid]] for name, bid in self.obj_bodies.items()}
-        # geom -> segmentation label
+        # (object type, id) -> segmentation label: geoms of rigid objects, skins of soft breads
         self.seg_label = {}
         for name, bid in self.obj_bodies.items():
             for gi in range(self.m.ngeom):
                 if self.m.geom_bodyid[gi] == bid:
-                    self.seg_label[gi] = name
+                    self.seg_label[(int(mujoco.mjtObj.mjOBJ_GEOM), gi)] = name
+        for name in self.soft:
+            self.seg_label[(int(mujoco.mjtObj.mjOBJ_SKIN), mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SKIN, f"{name}_skin"))] = name
 
         self._init_arms()
         self.renderer = mujoco.Renderer(self.m, self.H, self.W) if render else None
@@ -101,7 +107,7 @@ class ServeBreadSim:
         if scene:
             sc.update(scene)
         for name, pose in sc.items():
-            if name not in self.obj_bodies:
+            if name not in self.obj_names:
                 continue
             self.set_object_pose(name, *pose)
         for s, arm in self.arms.items():
@@ -135,15 +141,30 @@ class ServeBreadSim:
         return out
 
     def set_object_pose(self, name: str, x: float, y: float, yaw_deg: float):
-        qa = self.obj_free_qadr[name]
         if name == "plate":
             z = 0.0005
         else:
             z = self.meta["objects"][name]["extents"][2] / 2 + 0.0008
-        self.d.qpos[qa:qa + 3] = [x, y, z]
-        self.d.qpos[qa + 3:qa + 7] = yaw_quat(yaw_deg)
-        da = self.obj_free_dadr[name]
+        self.place_object(name, [x, y, z] + list(yaw_quat(yaw_deg)))
+
+    def place_object(self, name: str, pose7) -> None:
+        """Rigidly place an object (pos + wxyz quat of its centre), zero velocity."""
+        if name in self.soft:
+            self.soft[name].place(self.d, pose7[:3], pose7[3:])
+            return
+        qa, da = self.obj_free_qadr[name], self.obj_free_dadr[name]
+        self.d.qpos[qa:qa + 7] = pose7
         self.d.qvel[da:da + 6] = 0.0
+
+    def object_pose7(self, name: str) -> List[float]:
+        """pos + wxyz quat; for a soft bread the best rigid fit of its deformation grid."""
+        if name in self.soft:
+            return self.soft[name].pose7(self.d)
+        bid = self.obj_bodies[name]
+        return self.d.xpos[bid].tolist() + self.d.xquat[bid].tolist()
+
+    def object_pos(self, name: str) -> np.ndarray:
+        return np.asarray(self.object_pose7(name)[:3])
 
     # ------------------------------------------------------------------ step
     def step(self, n: int = 1):
@@ -155,6 +176,8 @@ class ServeBreadSim:
 
     # ------------------------------------------------------------- geometry
     def body_T_world(self, name: str) -> np.ndarray:
+        if name in self.soft:
+            return self.soft[name].T_world(self.d)
         bid = self.m.body(name).id
         return T_from(self.d.xmat[bid].reshape(3, 3), self.d.xpos[bid])
 
@@ -187,12 +210,11 @@ class ServeBreadSim:
         r.update_scene(self.d, camera="policy_cam")
         seg = r.render()
         r.disable_segmentation_rendering()
-        geom_ids = seg[:, :, 0]
+        ids = seg[:, :, 0]
         types = seg[:, :, 1]
-        masks = {name: np.zeros((self.H, self.W), np.uint8) for name in self.obj_bodies}
-        valid = types == mujoco.mjtObj.mjOBJ_GEOM
-        for gi, name in self.seg_label.items():
-            masks[name][valid & (geom_ids == gi)] = 255
+        masks = {name: np.zeros((self.H, self.W), np.uint8) for name in self.obj_names}
+        for (ty, oid), name in self.seg_label.items():
+            masks[name][(types == ty) & (ids == oid)] = 255
         return masks
 
     # ------------------------------------------------------------- snapshot
@@ -203,7 +225,6 @@ class ServeBreadSim:
             q = self.d.qpos[arm.qadr].tolist()
             out["qpos"][s] = q + [float(self.d.qpos[arm.g_qadr])]
         out["qfull"] = np.round(self.d.qpos, 5).tolist()
-        for name in self.obj_bodies:
-            bid = self.obj_bodies[name]
-            out["objects"][name] = self.d.xpos[bid].tolist() + self.d.xquat[bid].tolist()
+        for name in self.obj_names:
+            out["objects"][name] = [round(v, 5) for v in self.object_pose7(name)]
         return out
