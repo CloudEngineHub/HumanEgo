@@ -175,14 +175,26 @@ python simulation/scripts/autotune_validate.py --name my_rig --top 4 --min_iter 
 re-evaluates the best candidates and the production settings on the same held-out scenes
 and writes `final.json` (what `build_web.py --params` uses).
 
-**Run `soft_v4` (soft bread, two arms, 10 batches × 8 candidates × 14 scenes):**
+**Runs `soft_v4` → `soft_v5` (soft bread, two arms; per-arm success on the same 32 held-out scenes):**
 
-| | per-arm success, 32 held-out scenes | right (croissant) | left (danish) |
+| | per-arm | right (croissant) | left (danish) | both served |
+|---|---|---|---|---|
+| production `Control.yaml`, near-elastic crumb | 28 % | 28 % | 28 % | — |
+| `soft_v4` tuned, near-elastic crumb | 58 % | 84 % | 31 % | — |
+| production, lossy crumb + physical success | 41 % | 41 % | 41 % | 13 % |
+| `soft_v4` tuned, lossy crumb | 66 % | 91 % | 41 % | 41 % |
+| **`soft_v5` tuned (adds tool pitch), lossy crumb** | **70 %** | **91 %** | **50 %** | **50 %** |
+
+`soft_v5`: driver goal time 0.37 s (`duration_smooth_param` 3.7), EMA 0.37, look-ahead 40,
+tool point 0.9 cm deeper and the gripper held 7.6° more level than the commanded EE pose,
+crumb E = 17.5 kPa, μ = 0.95, 13.8 N. Per robot (24 held-out scenes, own tuning runs):
+
+| | production | tuned | calibration found |
 |---|---|---|---|
-| production `Control.yaml` | 28 % | 28 % | 28 % |
-| tuned | **58 %** | **84 %** | 31 % |
+| Franka Panda | 25 % | 33 % | tool point 1.25 cm *shallower* (keeps the palm off the bread), pitch 2.5° |
+| UR5e + 2F-85 | 31 % | 38 % | tool point 1.3 cm deeper, pitch 5°, 21 N |
 
-The tuned controller changes three things, all pointing at the grasp-height mechanism above:
+`soft_v4`'s tuned controller changed three things, all pointing at the grasp-height mechanism above:
 the driver goal time drops from 1.2 s to 0.49 s (`duration_smooth_param` 12 → 4.9) and the
 position EMA from 0.5 to 0.29, so the arm follows the descending plan instead of trailing it,
 and the tool point moves 0.9 cm deeper along the (downward-pitched) approach

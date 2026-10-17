@@ -177,9 +177,11 @@ def write_manifest(configs, tuning_name):
                          "condition (bread–plate offset, depth and bread yaw as in the paper's protocol), with "
                          "<b>soft bread</b> held by friction alone and the controller settings found by the "
                          "self-tuning loop on the Trossen rig. <b>Two arms</b>: one single-hand model drives both "
-                         "arms; the left arm sees a mirrored image, exactly as on the real robot. The left arm "
-                         "carries the 7.4 cm-wide danish (8.8 cm max. gripper opening); Franka and UR5e were not "
-                         "tuned and rarely bring the soft bread to the plate."),
+                         "arms; the left arm sees a mirrored image, exactly as on the real robot. <b>Served</b> = "
+                         "released and resting on the plate (not touching the table). The left arm carries the "
+                         "7.4 cm-wide danish (8.8 cm max. gripper opening). Franka and UR5e run their own tuned "
+                         "calibration, but their hands suit the policy's deep end-on pinch less (short fingers, "
+                         "small pads)."),
         "tuning": tuning_summary(tuning_name),
     }
     with open(man_p, "w") as f:
