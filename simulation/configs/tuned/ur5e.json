@@ -1,32 +1,48 @@
 {
  "robot": "ur5e",
- "autotune_run": "ur5e_v2",
- "chosen": "batch3_0.788",
+ "autotune_run": "ur5e_v3",
+ "chosen": "batch1_0.911",
  "requires": {
   "control.grasp_assist.enabled": true
  },
  "held_out": {
   "n_scenes": 24,
   "seed": 7777,
-  "per_arm": 0.708,
+  "per_arm": 0.875,
   "per_side": {
-   "right": 0.958,
-   "left": 0.458
-  }
+   "right": 0.917,
+   "left": 0.833
+  },
+  "both": 0.792
  },
  "params": {
-  "control.grasp_assist.lateral_gain": 0.9480184487779406,
-  "control.grasp_assist.along_max": 0.01718404823602176,
-  "control.grasp_assist.height_max": -0.0022381577714488043,
-  "control.grasp_assist.arrive_tol": 0.010262610341998707,
-  "control.grasp_assist.close_hold": 0.44383155500151117,
+  "control.grasp_assist.lateral_gain": 0.9524575250744156,
+  "control.grasp_assist.along_max": 0.019504986238460597,
+  "control.grasp_assist.height_max": -0.0007266144129390167,
+  "control.grasp_assist.arrive_tol": 0.009657319643796574,
+  "control.grasp_assist.close_hold": 0.5296016694440897,
   "control.grasp_assist.regrasp_max": 2,
-  "control.grasp_assist.retry_lower": 0.0029032348621873625,
-  "control.grasp_assist.retry_inward": 0.00871950924080519,
-  "control.alpha": 0.5342371296853116,
-  "control.duration_smooth_param": 8.112323943789686,
-  "control.tcp_offset": -0.0036759451749221635,
-  "control.tool_pitch_deg": 8.908063131144761,
-  "control.grasp_threshold": 0.5307963815371359
+  "control.grasp_assist.retry_lower": 0.0027174007212013803,
+  "control.grasp_assist.retry_inward": 0.010250978101764306,
+  "control.alpha": 0.5279328671327562,
+  "control.duration_smooth_param": 9.298307923497445,
+  "control.tcp_offset": -0.003624210657760564,
+  "control.tool_pitch_deg": 6.837762421160271,
+  "control.grasp_threshold": 0.5115026326297095,
+  "control.grasp_assist.q_empty": 0.08730146378264417,
+  "control.release.place_down": true,
+  "control.release.margin": 0.03,
+  "control.release.lift": 0.08
+ },
+ "note": "release: set the bread down 3 cm above its resting height, open, lift the open hand 8 cm, then go home",
+ "held_out_2": {
+  "n_scenes": 24,
+  "seed": 8888,
+  "per_arm": 0.812,
+  "per_side": {
+   "right": 0.958,
+   "left": 0.667
+  },
+  "both": 0.625
  }
 }

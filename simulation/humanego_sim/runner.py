@@ -135,6 +135,11 @@ class EpisodeRunner:
         b = pts.get(self.anchor_key)
         if b is not None and len(b) >= 3:
             c = b.mean(0)
+            # centre height: the contour keypoints lie on the visible upper surface, so their mean sits
+            # above the centre (+0.25 cm croissant, +0.5 cm danish); the bread rests on the table
+            # (world z = 0), so half its top height is the centre (within 1 mm on both breads)
+            if self.cfg.get("perception", {}).get("bread_centre_height", "half_top") == "half_top":
+                c[2] = 0.5 * float(np.sort(b[:, 2])[-3:].mean())
             xy = b[:, :2] - c[:2]
             ev, evec = np.linalg.eigh(xy.T @ xy)
             a2 = evec[:, np.argmax(ev)]

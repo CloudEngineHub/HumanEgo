@@ -8,16 +8,17 @@
  "held_out": {
   "n_scenes": 32,
   "seed": 7777,
-  "per_arm": 0.812,
+  "per_arm": 0.906,
   "per_side": {
-   "right": 0.875,
-   "left": 0.75
-  }
+   "right": 0.938,
+   "left": 0.875
+  },
+  "both": 0.844
  },
  "params": {
   "control.grasp_assist.lateral_gain": 0.728981723808762,
   "control.grasp_assist.along_max": 0.03762233681604595,
-  "control.grasp_assist.height_max": -0.0020354887133450118,
+  "control.grasp_assist.height_max": -0.006,
   "control.grasp_assist.arrive_tol": 0.0060151312907027014,
   "control.grasp_assist.close_hold": 0.6904829129774759,
   "control.grasp_assist.q_empty": 0.1507121779829087,
@@ -31,5 +32,16 @@
   "control.grasp_threshold": 0.6474502907426785,
   "control.idle_dist_threshold": 0.08345024627967582,
   "control.idle_time_limit": 2.6519472206454893
+ },
+ "note": "soft_v6 parameters with the pinch capped 0.6 cm below the bread centre (height_max, set by hand after the left-arm audit; centre height = half the perceived top height)",
+ "held_out_2": {
+  "n_scenes": 32,
+  "seed": 8888,
+  "per_arm": 0.938,
+  "per_side": {
+   "right": 0.938,
+   "left": 0.938
+  },
+  "both": 0.906
  }
 }

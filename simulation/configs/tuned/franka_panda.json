@@ -1,33 +1,44 @@
 {
  "robot": "franka_panda",
- "autotune_run": "franka_v2",
- "chosen": "batch3_0.704",
+ "autotune_run": "franka_v3",
+ "chosen": "batch3_0.807",
  "requires": {
   "control.grasp_assist.enabled": true
  },
  "held_out": {
   "n_scenes": 24,
   "seed": 7777,
-  "per_arm": 0.604,
+  "per_arm": 0.625,
   "per_side": {
-   "right": 0.75,
-   "left": 0.458
-  }
+   "right": 0.875,
+   "left": 0.375
+  },
+  "both": 0.333
  },
  "params": {
-  "control.grasp_assist.lateral_gain": 0.3700492676825036,
-  "control.grasp_assist.along_max": 0.04501399163029805,
-  "control.grasp_assist.height_max": 0.0011908287834907529,
-  "control.grasp_assist.arrive_tol": 0.005262475160068424,
-  "control.grasp_assist.close_hold": 0.7277934554111354,
-  "control.grasp_assist.regrasp_max": 3,
-  "control.grasp_assist.retry_lower": 0.0056253414538249965,
-  "control.grasp_assist.retry_inward": 0.01450107368996531,
-  "control.alpha": 0.24626636952472952,
-  "control.duration_smooth_param": 7.010242630970307,
-  "control.tcp_offset": 0.009972825535730798,
-  "control.tool_pitch_deg": -2.7448184054056597,
-  "control.grasp_threshold": 0.49611712865058166,
-  "control.grasp_assist.q_empty": 0.07695225647666898
+  "control.grasp_assist.lateral_gain": 0.3592944624491984,
+  "control.grasp_assist.along_max": 0.05927730313679491,
+  "control.grasp_assist.height_max": -0.0006724127146712222,
+  "control.grasp_assist.arrive_tol": 0.002077117729583439,
+  "control.grasp_assist.close_hold": 0.5064968923863504,
+  "control.grasp_assist.regrasp_max": 2,
+  "control.grasp_assist.retry_lower": 0.010143958613875282,
+  "control.grasp_assist.retry_inward": 0.012971213853535885,
+  "control.alpha": 0.3884347031046941,
+  "control.duration_smooth_param": 2.0,
+  "control.tcp_offset": 0.019404754183786593,
+  "control.tool_pitch_deg": -5.733670213106784,
+  "control.grasp_threshold": 0.3752076824392497,
+  "control.grasp_assist.q_empty": 0.029999999999999995
+ },
+ "held_out_2": {
+  "n_scenes": 24,
+  "seed": 8888,
+  "per_arm": 0.604,
+  "per_side": {
+   "right": 0.875,
+   "left": 0.333
+  },
+  "both": 0.333
  }
 }

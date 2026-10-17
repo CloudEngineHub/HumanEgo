@@ -190,6 +190,79 @@ and up to 3 re-grasps; the UR5e on a fast EMA (0.53), a 9° more level gripper a
 pull onto the bread's axis (gain 0.95, within 1.7 cm of its middle). The left arm (mirrored
 view, wider danish) is the weak side on every robot.
 
+### The left arm
+
+With those settings the left arm served 75 % of its breads on the Trossen and 46 % on the
+Franka and UR5e, against 88–96 % on the right. Every left-arm episode was logged and audited
+(`compare_params.py --log`, `scripts/grasp_audit.py`), and each suspect was swapped out on
+the same held-out scenes:
+
+| suspect | test | left arm |
+|---|---|---|
+| mirrored perception | perceived bread (mirrored back) vs ground truth | long-axis error 7.5° (right arm 8.0°), centre offsets mirror-symmetric: not it |
+| asymmetric start pose (gripper 38° below horizontal, right arm 25°) | `rig.mirror_left_start` (Trossen); capping the grasp pitch at 27–30° (Franka) | 69 % vs 75 %; 33–38 % vs 46 %: not it |
+| the 7.4 cm danish | a croissant for the left arm too | Trossen 69 % (no change), Franka 46 → 67 %, UR5e 50 → 67 % |
+| release onto the croissant | where the danish ends up | UR5e: 11 of 12 left failures. It drops from 10–12 cm onto the croissant and slides off the plate, or the move home drags it |
+
+Two causes, two fixes:
+
+1. **Pinch height on the taller danish** (Trossen: the left arm lost breads in transit, 16
+   of 160 episodes against 1 on the right). The 6 cm, 75 g danish holds when pinched at or
+   below its centre (97 % of lifts) and slips out above it (68 % at 0 to +0.5 cm, ~30 % above
+   +1 cm). The skill caps the pinch height relative to the *perceived* centre. That was the
+   mean height of the contour keypoints, but they are lifted from depth on the visible upper
+   surface, so it sat 0.25 cm above the croissant's centre and 0.5 cm above the danish's.
+   A bread rests on the table, so its centre is half its perceived top height (within 1 mm
+   on both breads; `runner._perceived_geometry`, Python and browser;
+   `perception.bread_centre_height: mean` restores the old estimate). With that estimate the
+   Trossen pinch cap moves from 0.2 cm to 0.6 cm below the centre (`grasp_assist.height_max`
+   −0.006). Each change alone does nothing on the left arm; together they do
+   (Trossen, left arm, 64 held-out scenes, two seeds):
+
+   | centre estimate | pinch cap | left arm |
+   |---|---|---|
+   | keypoint mean (before) | −0.2 cm | 80 % |
+   | half the top height | −0.2 cm | 81 % |
+   | keypoint mean | −0.6 cm | 81 % |
+   | **half the top height** | **−0.6 cm** | **92 %** |
+   | half the top height | −0.9 cm | 88 % |
+
+2. **Release onto the croissant** (UR5e). The UR5e opens its hand ~11 cm above the plate,
+   on top of the croissant that is already there. `control.release.place_down` first sets
+   the danish down to 3 cm above its resting height, then opens, lifts the open hand 8 cm
+   straight up and only then goes home. Without the lift the move home drags the bread off
+   (6 % per arm). The Trossen already releases from ~8 cm, and place-down lowers its score
+   and the Franka's, so only the UR5e uses it (`configs/tuned/ur5e.json`). The UR5e and
+   Franka were then re-tuned (`autotune_runs/ur5e_v3`, `franka_v3`).
+
+Per arm / right / left / both breads served, on the held-out scenes of seed 7777 and on a
+second set (seed 8888); 32 scenes for the Trossen, 24 for the others:
+
+| | seed 7777 | seed 8888 |
+|---|---|---|
+| Trossen, before (`soft_v6`) | 81 / 88 / 75 / 69 % | 83 / 81 / 84 / 75 % |
+| **Trossen, after** | **91 / 94 / 88 / 84 %** | **94 / 94 / 94 / 91 %** |
+| UR5e, before (`ur5e_v2`) | 73 / 96 / 50 / 46 % | 71 / 100 / 42 / 42 %\* |
+| UR5e, `ur5e_v2` + place-down | 85 / 96 / 75 / 71 % | 85 / 100 / 71 / 71 % |
+| **UR5e, after (`ur5e_v3` + place-down)** | **88 / 92 / 83 / 79 %** | **81 / 96 / 67 / 63 %** |
+| Franka, before (`franka_v2`) | 60 / 75 / 46 / 33 % | 50 / 71 / 29 / 21 %\* |
+| **Franka, after (`franka_v3`)** | **63 / 88 / 38 / 33 %** | **60 / 88 / 33 / 33 %** |
+
+\* measured with the new centre estimate, which leaves the UR5e and Franka unchanged
+(seed 7777: 75 / 96 / 54 % and 58 / 71 / 46 %). Repeated runs of the same scenes differ by
+3–4 points (GPU nondeterminism in the policy), so the two seeds are reported separately.
+
+The Franka's left arm did not improve. Its hand opens 8 cm and the danish is 7.4 cm wide:
+the pinch holds only when it lands within ~1.5 cm of the bread's axis, and the perceived axis
+is itself 1.0–1.4 cm off. With a croissant on the left the same settings serve 67 %, so this
+is a limit of the hand, not of the controller.
+
+Tried and not adopted: latching the grasp flag once the gripper stalls (the flag flickers
+while the danish slips, but the flicker is a symptom: latched, the Trossen left arm served
+78 % instead of 84 %, the Franka's 33 % instead of 46 %); capping the grasp pitch (Franka);
+place-down on the Trossen and Franka; the −0.6 cm pinch cap on the UR5e and Franka (UR5e
+left arm 50–71 % instead of 67–88 %); lifting the open hand without placing first.
+
 ## Live mode: the policy in your browser
 
 `web/js/live/` is a line-by-line port of the Python stack to JavaScript:
