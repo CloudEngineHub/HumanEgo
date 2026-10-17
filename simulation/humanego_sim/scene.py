@@ -133,6 +133,10 @@ def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
             f = float(phys.get("gripper_force", robot.gripper_force)) if robot.name == "trossen_wxai" else robot.gripper_force
             a.forcerange = [-f, f]
             a.forcelimited = 1
+            gk = float(phys.get("gripper_kp_scale", 1.0)) if robot.name == "trossen_wxai" else 1.0
+            if gk != 1.0:              # servo stiffness: how hard a closed-on-bread gripper squeezes
+                a.gainprm[0] *= gk
+                a.biasprm[1] *= gk
     return child
 
 

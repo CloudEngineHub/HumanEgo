@@ -99,8 +99,19 @@ The offset adds up from three parts of the real pipeline, all reproduced faithfu
 | policy: the predicted grasp point relative to those keypoints (the human demos pinch 1.2 cm above the contour centroid) | +0.5 cm |
 | execution: the driver re-plans a quintic with `goal_time = 1.2 s` from the current state every 0.1 s (no feed-forward, as `RobotArmTrossen.move_p`), so the arm trails the descending target by ≈ 2 cm; the gripper closes on the `any` grasp signal (0.5 s) and the post-grasp lift starts before the arm catches up | +1.0–1.2 cm |
 
-Shorter look-ahead does not help (it raises the grasp to +2.2 cm); a shorter goal time
-lowers it by 0.3 cm. With friction-only soft bread this matters: a pinch holds when the
+What does and does not move it (same 16 scenes, soft bread, per-arm success in brackets):
+
+| change | fingertips above centre at closing | per-arm success |
+|---|---|---|
+| production controller | +1.6 cm | 44 % |
+| `look_ahead_offset` 45 → 30 | +2.2 cm | 38 % |
+| `duration_smooth_param` 12 → 6 (goal time 0.6 s) | +1.3 cm | 44 % |
+| close only if the grasp is ≤ 20 steps ahead (`grasp_k_any` 20) | +1.4 cm | 41 % |
+| goal feed-forward velocity (`feedforward_gain` 1, not in the real controller) | +1.8 cm | 34 % |
+| real grasp flag only (opening < 50 %, no stall detection) | +1.6 cm | 16 % |
+
+The gripper closes on the early `any` signal while the arm is still descending; the stall
+on the bread then counts as a grasp and the lift starts. With friction-only soft bread this matters: a pinch holds when the
 fingertips are ≤ ≈ 1.9 cm above the centre and slips out above that (the pads then press
 on the rounded top, above the bread's widest section), independently of grid resolution,
 crumb stiffness or friction (`scripts/grasp_test.py` replays recorded grasp poses with any physics). The
