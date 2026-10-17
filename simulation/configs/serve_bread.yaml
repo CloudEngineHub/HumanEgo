@@ -107,3 +107,12 @@ control:                   # cfg/inference/serve_bread/Control.yaml (real rig)
   split_x_ratio: 0.5
   policy_period: 0.30      # s between re-plans (real loop ran at ~3.3 Hz with DINO-SAM + LaMa)
   max_episode_time: 40.0
+
+# Per-robot calibration, applied between the defaults above and explicit overrides.
+per_robot:
+  ur5e:
+    physics:
+      # the 2F-85's small sharp-cornered pads tunnel into a surface-only flex and the bread
+      # then stays hooked on the open gripper; a volumetric flex (tets to the bread's centre)
+      # keeps them out (12 scenes: 17% -> 54% per arm)
+      soft: {dim: 3}

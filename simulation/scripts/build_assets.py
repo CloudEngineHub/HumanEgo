@@ -112,6 +112,13 @@ def build_bread(name: str):
     Vf, Ff = b["flex"]
     flex = trimesh.Trimesh(Vf, Ff, process=False)
     flex.export(os.path.join(d, f"{name}_flex.obj"))
+    # finer collision skin (physics.soft.surface: fine): small finger pads cannot slip between vertices
+    from bread_gen import SPECS, tube_mesh
+    sp = SPECS[name]()
+    Vf2, Ff2, _ = tube_mesh(sp, 40, 26, with_relief=False)
+    lo, hi = Vf2.min(0), Vf2.max(0)
+    Vf2 = (Vf2 - (lo + hi) / 2) / (hi - lo) * np.asarray(sp.size)
+    trimesh.Trimesh(Vf2, Ff2, process=False).export(os.path.join(d, f"{name}_flex_fine.obj"))
     for f in os.listdir(d):
         if f.startswith(f"{name}_col"):
             os.remove(os.path.join(d, f))

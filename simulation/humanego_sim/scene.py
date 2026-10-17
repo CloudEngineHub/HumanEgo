@@ -243,7 +243,9 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         d = os.path.join(ASSETS, "objects", obj)
         if soft:
             import trimesh
-            fm = trimesh.load(os.path.join(d, f"{obj}_flex.obj"), force="mesh", process=False)
+            surf = phys.get("soft", {}).get("surface", "coarse")
+            fm = trimesh.load(os.path.join(d, f"{obj}_flex{'_fine' if surf == 'fine' else ''}.obj"),
+                              force="mesh", process=False)
             me = spec.add_mesh()
             me.name = f"{obj}_flex"
             # the flex surface carries a contact shell of `radius`: shrink it by that much so the

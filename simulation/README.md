@@ -83,6 +83,16 @@ Notes on the modelling choices (all in `configs/serve_bread.yaml`):
   integrator (implicit in position, stable at the 2 ms step); `impratio = 100` stops a held
   bread from creeping out of the grip. `physics.bread_model: rigid` restores the earlier
   rigid-bread + finger-adhesion proxy.
+* **Crumb that lands dead.** Real crumb dissipates almost all impact energy: a dropped bread
+  does not bounce. Flex damping 0.03 s and over-damped bread contacts (`solref` damping
+  ratio 3) reproduce that. It matters for the second bread: the left arm releases the danish
+  ~11 cm above the plate, often onto the croissant already there. In `scripts/drop_test.py`
+  (danish dropped 4–9 cm onto a croissant lying on the plate, random offset and tilt) it
+  stays on the plate in 90 % of drops, against 13 % with near-elastic crumb.
+* **Served = resting on the plate.** An arm succeeds when it released its bread and the bread
+  rests on the plate: its centre is over the plate and no part touches the table (the
+  plate's floor is 8.5 mm above the table). The earlier rule, centre within R − 2 cm, failed
+  breads that lie fully on the plate's rim zone; it is still reported as `success_strict`.
 * **Grasp state.** The real loop flags a grasp when the measured gripper opening drops
   below 50 %; in simulation a gripper that has finished closing and stalled on the bread
   also counts (`control.grasp_state_source`).
@@ -183,11 +193,31 @@ an 8.8 cm maximum gripper opening, and the left arm starts from the real rig's a
 pose and sees a mirrored image. The agent's decisions (`inbox/response_*.json`) record the
 reasoning between batches.
 
-**Other robots on soft bread (open issue).** The Franka Panda and the UR5e + 2F-85 reach and
-lift the soft breads but rarely serve them (5–20 % per arm in the web build): most failures
-are breads carried but not brought over the plate. Neither a stiffer gripper servo (Franka
-kp ×2–25, i.e. 6–75 N) nor the production controller changes this, and the controller was
-tuned on the Trossen rig only. With the rigid-bread proxy both arms served 45–65 %.
+**Other robots.** The policy grasps like a human hand: end-on along the bread, fingertips
+3–4.5 cm past its centre, approach pitched 20–35° down. The Trossen's 7.9 cm finger plates
+(8.4 cm from fingertip to carriage, 6 cm tall) straddle half a croissant. The other hands
+are built differently (measured in the EE frame of each model):
+
+| | finger pads (approach × height) | fingertip → palm | what goes wrong with the human-style grasp |
+|---|---|---|---|
+| Trossen WidowX AI | 7.0 × 6.0 cm plates | 8.4 cm | — |
+| Franka Hand | 1.7 × 1.7 cm pads on 5 cm fingers | ~5 cm | the palm housing lands on the bread and squashes it; thin fingers can tunnel into the crumb |
+| Robotiq 2F-85 | 3.8 × 2.2 cm pads | 5.5 cm | shallow: a high pinch catches only the crust |
+
+A second, simulation-specific problem: small, sharp-cornered pads (2F-85, Franka) can tunnel
+into a surface-only flex while squeezing, and the bread then stays hooked on the opened
+gripper and is carried away (most "dropped in transit" failures were this). A volumetric flex
+(`physics.soft.dim: 3`, tetrahedra to the bread's centre) keeps the pads out: UR5e 17 % → 54 %
+per arm on 12 scenes. It also makes dropped bread bouncier and costs the Trossen rig ~10
+points, so it is set for the UR5e only (`per_robot:`); a finer collision skin
+(`physics.soft.surface: fine`) helped less.
+
+So each hand gets its own calibration, as when moving a policy to a new gripper:
+`control.tool_pitch_deg` holds the gripper more level than the commanded EE pose (about the
+spread axis, through the tool point) and `control.tcp_offset` moves the tool point along
+the approach; together with the tracking speed and the gripper's servo they are tuned per
+robot (`autotune_runs/franka_v1`, `ur5e_v1`). Per-robot values go in `per_robot:` of the
+config.
 
 Earlier findings on the rigid-bread proxy: the production grasp timing (`any` over the whole
 chunk) is near-optimal there, and most failures were grasps, not placing.

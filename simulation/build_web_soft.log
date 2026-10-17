@@ -1,0 +1,177 @@
+[web] building trossen_wxai / realsense_d405 / bimanual (24 rollouts)
+[live] trossen_wxai_realsense_d405_bimanual: 56 collision meshes, 0.33 MB
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[eval] success 0.17 (4/24) side={'right': 0.792, 'left': 0.25} fails={'dropped_in_transit': 7, 'rim_or_edge': 10, 'success': 25, 'grasp_missed': 6} wall=87s
+[web] manifest: 6 configs, 76 rollouts
+[web] building trossen_wxai / realsense_d405 / single (12 rollouts)
+[live] trossen_wxai_realsense_d405_single: 28 collision meshes, 0.17 MB
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[eval] success 0.67 (8/12) side={'right': 0.667} fails={'success': 8, 'timeout': 1, 'grasp_missed': 3} wall=30s
+[web] manifest: 6 configs, 76 rollouts
+[web] building trossen_wxai / realsense_d435 / bimanual (10 rollouts)
+[live] trossen_wxai_realsense_d435_bimanual: 56 collision meshes, 0.33 MB
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[eval] success 0.20 (2/10) side={'right': 0.9, 'left': 0.3} fails={'success': 12, 'grasp_missed': 4, 'rim_or_edge': 3, 'dropped_in_transit': 1} wall=46s
+[web] manifest: 6 configs, 76 rollouts
+[web] building trossen_wxai / zed2i / bimanual (10 rollouts)
+[live] trossen_wxai_zed2i_bimanual: 56 collision meshes, 0.33 MB
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[eval] success 0.30 (3/10) side={'right': 0.9, 'left': 0.4} fails={'success': 13, 'rim_or_edge': 3, 'dropped_in_transit': 3, 'grasp_missed': 1} wall=59s
+[web] manifest: 6 configs, 76 rollouts
+[web] building franka_panda / realsense_d405 / bimanual (10 rollouts)
+[live] franka_panda_realsense_d405_bimanual: 24 collision meshes, 0.40 MB
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[eval] success 0.00 (0/10) side={'right': 0.1, 'left': 0.0} fails={'grasp_missed': 9, 'dropped_in_transit': 9, 'rim_or_edge': 1, 'success': 1} wall=39s
+[web] manifest: 6 configs, 76 rollouts
+[web] building ur5e / realsense_d405 / bimanual (10 rollouts)
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+[live] ur5e_realsense_d405_bimanual: 12 collision meshes, 6.31 MB
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+WARNING: Attach conflict when attaching 'robotiq_2f85' to 'ur5e', policy is 'warning'
+impratio: parent has 1 (default), child has 10, keeping parent value
+cone: parent has 0 (default), child has 1, keeping parent value
+
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[ICTPolicy] loaded /home/leo/leo/HumanEgo/checkpoints/serve_bread/latest.pt | hands=1 ict_dim=20 frame=camera_frame region_attn=True steps=20
+[eval] success 0.00 (0/10) side={'right': 0.1, 'left': 0.3} fails={'success': 4, 'dropped_in_transit': 13, 'rim_or_edge': 2, 'grasp_missed': 1} wall=43s
+[web] manifest: 6 configs, 76 rollouts
+[web] manifest: 6 configs, 76 rollouts
