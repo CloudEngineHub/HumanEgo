@@ -53,15 +53,23 @@ DEFAULT_SPACE: List[ParamSpec] = [
     ParamSpec("control.max_rot_step", 0.01, 0.30, 0.02, "log", note="safety cage, rad per tick"),
     ParamSpec("control.grasp_threshold", 0.35, 0.72, 0.6, note="grasp prob -> close (policy peaks ~0.7)"),
     ParamSpec("control.grasp_k_any", 20, 50, 50, "int", note="close if grasp intent within the next k steps (50 = 'any')"),
-    ParamSpec("control.tcp_offset", -0.02, 0.01, 0.0, note="TCP shift along approach (m); <0 = fingers reach deeper"),
+    ParamSpec("control.tcp_offset", -0.03, 0.03, 0.0, note="TCP shift along approach (m); <0 = fingers reach deeper"),
     ParamSpec("control.idle_time_limit", 0.5, 3.5, 1.5, note="s holding near the plate before release"),
     ParamSpec("control.idle_dist_threshold", 0.04, 0.18, 0.13, note="hand-to-plate distance for release"),
     ParamSpec("control.forced_lift_height", 0.0, 0.10, 0.05, note="post-grasp lift bias, m"),
+    ParamSpec("control.tool_pitch_deg", -10.0, 40.0, 0.0, note="gripper held this much more level than the EE pose"),
     # ---- simulator physics: soft bread (MuJoCo flex) and contact, real-world ranges ----
     ParamSpec("physics.soft.young", 6e3, 6e4, 2e4, "log", group="physics", note="crumb Young's modulus, Pa"),
-    ParamSpec("physics.soft.damping", 5e-4, 1e-2, 2e-3, "log", group="physics", note="crumb viscous loss, s"),
+    ParamSpec("physics.soft.damping", 5e-3, 6e-2, 3e-2, "log", group="physics", note="crumb viscous loss, s"),
     ParamSpec("physics.bread_friction.0", 0.6, 1.5, 1.0, group="physics", note="crust on finger pads"),
     ParamSpec("physics.gripper_force", 8.0, 35.0, 12.0, group="physics", note="gripper force cap, N (Menagerie: 35)"),
+]
+
+# gripper servo of the non-Trossen hands (Menagerie Franka: ~3 N on a bread; 2F-85: tendon force cap)
+ROBOT_GRIPPER: List[ParamSpec] = [
+    ParamSpec("physics.robot_gripper.franka_panda.kp_scale", 1.0, 10.0, 1.0, "log", group="physics",
+              note="Franka hand servo stiffness x Menagerie"),
+    ParamSpec("physics.robot_gripper.ur5e.force", 10.0, 60.0, 40.0, group="physics", note="2F-85 force cap, N"),
 ]
 
 # the earlier rigid-bread proxy (physics.bread_model: rigid)
@@ -75,7 +83,7 @@ RIGID_PHYSICS: List[ParamSpec] = [
 def space_from_names(names: Optional[List[str]] = None) -> List[ParamSpec]:
     if not names:
         return list(DEFAULT_SPACE)
-    by = {p.name: p for p in RIGID_PHYSICS}
+    by = {p.name: p for p in RIGID_PHYSICS + ROBOT_GRIPPER}
     by.update({p.name: p for p in DEFAULT_SPACE})
     return [by[n] for n in names]
 

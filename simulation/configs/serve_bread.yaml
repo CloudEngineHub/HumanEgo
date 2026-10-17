@@ -60,12 +60,12 @@ physics:
     cells: {croissant: [4, 2, 2], bun: [4, 2, 2]}
     young: 2.0e+4          # Pa; fresh croissant / brioche crumb is ~5-50 kPa
     poisson: 0.25
-    damping: 0.002         # s; viscous loss of the crumb
+    damping: 0.03          # s; crumb is very lossy: a dropped bread lands dead, it does not bounce
     radius: 0.001
   impratio: 100            # stiff friction cone: a held bread does not creep out of the grip
   bread_friction: [1.0, 0.01, 0.001]   # crust on the rubber finger pads
   bread_mass: {croissant: 0.050, bun: 0.075}
-  bread_solref: [0.004, 1.0]
+  bread_solref: [0.004, 3.0]   # over-damped contact: crumb crushes instead of bouncing (drop_test.py)
   bread_solimp: [0.9, 0.95, 0.001, 0.5, 2.0]
   bread_condim: 4
   plate_mass: 0.45

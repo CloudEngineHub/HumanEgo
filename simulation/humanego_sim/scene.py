@@ -246,7 +246,13 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
             fm = trimesh.load(os.path.join(d, f"{obj}_flex.obj"), force="mesh", process=False)
             me = spec.add_mesh()
             me.name = f"{obj}_flex"
-            me.uservert = np.asarray(fm.vertices).ravel().tolist()
+            # the flex surface carries a contact shell of `radius`: shrink it by that much so the
+            # outer contact surface stays on the visible crust (a thick shell resists tunnelling)
+            Vf = np.asarray(fm.vertices)
+            rad = float(phys.get("soft", {}).get("radius", 0.001))
+            ext_f = Vf.max(0) - Vf.min(0)
+            Vf = Vf * np.maximum(ext_f - 2 * rad, 1e-3) / ext_f
+            me.uservert = Vf.ravel().tolist()
             me.userface = np.asarray(fm.faces).ravel().tolist()
             z = np.load(os.path.join(d, f"{obj}_vis.npz"))
             bread_vis[obj] = (z["V"], z["F"], z["UV"])

@@ -33,6 +33,12 @@ def load_config(path: Optional[str] = None, overrides: Optional[dict] = None) ->
     path = path or os.path.join(SIM_ROOT, "configs", "serve_bread.yaml")
     with open(path) as f:
         cfg = yaml.safe_load(f)
+    # per-robot calibration (e.g. a different gripper's tool pitch) sits between the defaults
+    # and explicit overrides
+    robot = (overrides or {}).get("robot", cfg.get("robot"))
+    per = cfg.get("per_robot", {}).get(robot)
+    if per:
+        cfg = deep_update(cfg, per)
     if overrides:
         cfg = deep_update(cfg, overrides)
     return cfg
@@ -94,7 +100,8 @@ class ServeBreadSim:
             self.arms[s] = SimArm(self.m, self.d, s, self.robot,
                                   np.array(self.meta["T_base_in_world"][s]),
                                   np.array(self.meta["T_base_in_cam"][s]),
-                                  tcp_offset=float(self.cfg.get("control", {}).get("tcp_offset", 0.0)))
+                                  tcp_offset=float(self.cfg.get("control", {}).get("tcp_offset", 0.0)),
+                                  tool_pitch_deg=float(self.cfg.get("control", {}).get("tool_pitch_deg", 0.0)))
 
     # ----------------------------------------------------------------- reset
     def reset(self, scene: Optional[dict] = None, settle: float = 0.4, arm_q: Optional[dict] = None):
@@ -162,6 +169,14 @@ class ServeBreadSim:
             return self.soft[name].pose7(self.d)
         bid = self.obj_bodies[name]
         return self.d.xpos[bid].tolist() + self.d.xquat[bid].tolist()
+
+    def object_lowest_z(self, name: str) -> float:
+        """Height of the object's lowest surface point (soft bread: lowest flex vertex)."""
+        if name in self.soft:
+            fid = self.soft[name].flex_id
+            a, n = self.m.flex_vertadr[fid], self.m.flex_vertnum[fid]
+            return float(self.d.flexvert_xpos[a:a + n, 2].min())
+        return float(self.object_pos(name)[2] - self.meta["objects"][name]["extents"][2] / 2)
 
     def object_pos(self, name: str) -> np.ndarray:
         return np.asarray(self.object_pose7(name)[:3])

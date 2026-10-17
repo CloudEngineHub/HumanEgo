@@ -36,6 +36,8 @@ if __name__ == "__main__":
     ap.add_argument("--params", default=None, help="comma-separated subset of parameter names")
     ap.add_argument("--agent_timeout", type=float, default=1800)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--init", default=None, help="params JSON (e.g. a previous final.json) to start the search from")
+    ap.add_argument("--set", action="append", default=[], help="fixed base override, e.g. physics.soft.damping=0.03")
     args = ap.parse_args()
     base = {"mode": args.mode}
     if args.robot:
@@ -43,6 +45,15 @@ if __name__ == "__main__":
     if args.camera:
         base["camera"] = args.camera
     space = space_from_names(args.params.split(",") if args.params else None)
+    if args.set:
+        from evaluate import parse_sets
+        from humanego_sim.env import deep_update
+        base = deep_update(base, parse_sets(args.set))
+    if args.init:
+        init = json.load(open(args.init))["params"]
+        for p in space:
+            if p.name in init:
+                p.init = float(min(max(init[p.name], p.lo), p.hi))
     tuner = AutoTuner(args.name, base, space, pop=args.pop, scenes_per_candidate=args.scenes, workers=args.workers,
                       seed=args.seed, target=args.target, max_batches=args.batches, agent_timeout=args.agent_timeout)
     best = tuner.run()

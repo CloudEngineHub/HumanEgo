@@ -46,6 +46,13 @@ def _r(x, n=5):
     return [round(float(v), n) for v in np.asarray(x).ravel()]
 
 
+def glb_node_name(name: str) -> str:
+    """three.js' GLTFLoader strips '/' (and '.', ':', '[]') from node names: keep names loader-safe."""
+    for ch in "/.:[] ":
+        name = name.replace(ch, "__")
+    return name
+
+
 def export_mesh_glb(m: mujoco.MjModel, mesh_ids: List[int], out_path: str, strip_prefix: str = ""):
     """Write one GLB whose nodes are the given MuJoCo meshes (geometry only)."""
     scene = trimesh.Scene()
@@ -53,6 +60,7 @@ def export_mesh_glb(m: mujoco.MjModel, mesh_ids: List[int], out_path: str, strip
         name = m.mesh(mid).name
         if strip_prefix and name.startswith(strip_prefix):
             name = name[len(strip_prefix):]
+        name = glb_node_name(name)
         va, vn = m.mesh_vertadr[mid], m.mesh_vertnum[mid]
         fa, fn = m.mesh_faceadr[mid], m.mesh_facenum[mid]
         V = m.mesh_vert[va:va + vn]
@@ -129,7 +137,7 @@ def export_model(env, out_root: str, key: str) -> Dict:
                 for s in env.sides:
                     if mname.startswith(f"{s}/"):
                         mname = mname[len(s) + 1:]
-                entry.update({"asset": f"assets/robots/{robot}.glb", "node": mname})
+                entry.update({"asset": f"assets/robots/{robot}.glb", "node": glb_node_name(mname)})
         geoms.append(entry)
 
     # textures used by the web materials

@@ -386,7 +386,8 @@ class EpisodeRunner:
 
     # ------------------------------------------------------------------
     def evaluate(self, ctxs: Dict[str, SideCtx]) -> Dict[str, dict]:
-        """Success = the bread rests inside the plate rim, released, and the arm finished."""
+        """Success = the bread was released and rests on the plate: its centre is over the plate and
+        no part of it touches the table (the plate's floor sits 8.5 mm above the table top)."""
         env = self.env
         Tp = env.body_T_world("plate")
         R_plate = env.meta["objects"]["plate"]["R"]
@@ -394,9 +395,12 @@ class EpisodeRunner:
         for s, ctx in ctxs.items():
             Tb = env.body_T_world(f"bread_{s}")
             dxy = float(np.linalg.norm(Tb[:2, 3] - Tp[:2, 3]))
-            on_plate = dxy < R_plate - 0.02 and Tb[2, 3] > 0.004 and Tb[2, 3] < 0.12
+            low = env.object_lowest_z(f"bread_{s}")
+            on_plate = dxy < R_plate and low > 0.003 and Tb[2, 3] < 0.12
             released = not env.arms[s].gripper_cmd_closed()
             out[s] = {"success": bool(on_plate and released), "dist_to_plate_center": round(dxy, 4),
+                      "lowest_z": round(low, 4),
+                      "success_strict": bool(dxy < R_plate - 0.02 and 0.004 < Tb[2, 3] < 0.12 and released),
                       "bread_z": round(float(Tb[2, 3]), 4), "grasped": bool(ctx.hand["has_ever_grasped"]),
                       "bread_max_z": round(getattr(self, "_bread_max_z", {}).get(s, 0.0), 4),
                       "done_reason": ctx.done_reason or "timeout"}

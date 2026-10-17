@@ -24,7 +24,7 @@ def _object_entry(env, n: str) -> dict:
     half_h = float(om["extents"][2] / 2) if n != "plate" else 0.0
     if n in env.soft:            # soft bread: grid corners on world-aligned slide joints
         sb = env.soft[n]
-        return {"soft": True, "half_height": half_h, "qidx": [int(i) for i in sb.qidx],
+        return {"soft": True, "half_height": half_h, "flex": int(sb.flex_id), "qidx": [int(i) for i in sb.qidx],
                 "nodes": [int(b) for b in sb.bodies], "local": [round(float(v), 6) for v in sb.local.ravel()],
                 "p0": [round(float(v), 6) for v in sb.p0.ravel()]}
     out = {"qadr": int(env.obj_free_qadr[n]), "body": int(env.obj_bodies[n]), "half_height": half_h}

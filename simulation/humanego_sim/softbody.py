@@ -73,9 +73,13 @@ def add_soft_bread(spec: mujoco.MjSpec, name: str, kind: str, pos, mass: float, 
     """
     V, F, UV = vis
     cells = [int(c) for c in soft["cells"]]
-    fl = spec.worldbody.make_flex(name, type="mesh", dim=2, dof=soft.get("dof", "trilinear"),
+    # dim 3: tetrahedra from every surface triangle to the bread's centre, so a finger that gets
+    # inside the crumb is still in contact and is pushed out (a dim-2 surface can be tunnelled)
+    dim = int(soft.get("dim", 2))
+    kw = {"origin": [0.0, 0.0, 0.0]} if dim == 3 else {}
+    fl = spec.worldbody.make_flex(name, type="mesh", dim=dim, dof=soft.get("dof", "trilinear"),
                                   cellcount=cells, mass=float(mass), radius=float(soft.get("radius", 0.001)),
-                                  pos=[float(p) for p in pos], mesh=flex_mesh)
+                                  pos=[float(p) for p in pos], mesh=flex_mesh, **kw)
     fl.young = float(soft["young"])
     fl.poisson = float(soft["poisson"])
     fl.damping = float(soft["damping"])
