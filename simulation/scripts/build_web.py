@@ -126,6 +126,14 @@ def tuning_summary(name):
             best = json.load(open(fp))
             break
     note = ""
+    if best and best.get("trials"):         # final.json from autotune_validate.py
+        prod = next((t for t in best["trials"] if t["name"] == "production"), None)
+        v = best["validation"]
+        note = (f"Grey dots: candidates in each batch (per-arm success on shared random scenes); orange: best so far. "
+                f"On {best['n_scenes']} held-out scenes the tuned settings serve <b>{v['per_side_success_rate']:.0%}</b> "
+                f"per arm" + (f" vs <b>{prod['validation']['per_side_success_rate']:.0%}</b> with the production "
+                              f"controller." if prod else "."))
+        return {"batches": batches, "note": note, "best": best}
     if best:
         v = best.get("validation", {})
         note = (f"Grey dots: candidates in each batch (per-arm success on shared random scenes); orange: best so far. "
@@ -166,9 +174,12 @@ def write_manifest(configs, tuning_name):
         "default": {"robot": "trossen_wxai", "camera": "realsense_d405", "mode": "bimanual"},
         "summary": summary,
         "summary_note": ("Every rollout is a closed-loop run of the released checkpoint from a randomized initial "
-                         "condition (bread–plate offset, depth and bread yaw as in the paper's protocol). "
-                         "<b>Two arms</b>: one single-hand model drives both arms; the left arm sees a mirrored "
-                         "image, exactly as on the real robot."),
+                         "condition (bread–plate offset, depth and bread yaw as in the paper's protocol), with "
+                         "<b>soft bread</b> held by friction alone and the controller settings found by the "
+                         "self-tuning loop on the Trossen rig. <b>Two arms</b>: one single-hand model drives both "
+                         "arms; the left arm sees a mirrored image, exactly as on the real robot. The left arm "
+                         "carries the 7.4 cm-wide danish (8.8 cm max. gripper opening); Franka and UR5e were not "
+                         "tuned and rarely bring the soft bread to the plate."),
         "tuning": tuning_summary(tuning_name),
     }
     with open(man_p, "w") as f:

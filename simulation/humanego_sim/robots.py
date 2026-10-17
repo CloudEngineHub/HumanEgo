@@ -57,6 +57,7 @@ class RobotSpec:
     gripper_joint_closed: float = 0.0
     gripper_reset_qpos: Dict[str, float] = field(default_factory=dict)   # joints teleported at reset (open)
     gripper_force_param: bool = False   # whether physics.gripper_force applies to this gripper's actuator
+    gripper_kp_scale: float = 1.0       # gripper servo stiffness x Menagerie (how hard it squeezes a blocked object)
     kp_scale: Optional[float] = None    # None -> physics.arm_kp_scale from the config
     attach: List[dict] = field(default_factory=list)   # sub-models attached to a site, e.g. a gripper
     tool_site_spec: Optional[dict] = None   # {"body":..., "pos":[...]} adds the tool site if the MJCF has none
@@ -122,6 +123,9 @@ ROBOTS: Dict[str, RobotSpec] = {
         R_tool_to_ee=_SPREAD_Y,
         initial_joints={},           # filled by IK from the Trossen start pose (see robot_poses.json)
         home_joints=[0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785],
+        # Menagerie's hand servo (100 N/m on the finger tendon) squeezes a 6 cm bread with only ~3 N
+        # (the real Franka Hand: 70 N continuous). A stiffer servo (physics.robot_gripper.franka_panda
+        # .kp_scale 2-25) did not raise soft-bread success, so the Menagerie servo is kept.
         gripper_force=40.0,
         reach=0.85,
         finger_bodies=["left_finger", "right_finger"],

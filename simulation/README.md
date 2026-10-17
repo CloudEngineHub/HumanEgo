@@ -183,6 +183,12 @@ an 8.8 cm maximum gripper opening, and the left arm starts from the real rig's a
 pose and sees a mirrored image. The agent's decisions (`inbox/response_*.json`) record the
 reasoning between batches.
 
+**Other robots on soft bread (open issue).** The Franka Panda and the UR5e + 2F-85 reach and
+lift the soft breads but rarely serve them (5–20 % per arm in the web build): most failures
+are breads carried but not brought over the plate. Neither a stiffer gripper servo (Franka
+kp ×2–25, i.e. 6–75 N) nor the production controller changes this, and the controller was
+tuned on the Trossen rig only. With the rigid-bread proxy both arms served 45–65 %.
+
 Earlier findings on the rigid-bread proxy: the production grasp timing (`any` over the whole
 chunk) is near-optimal there, and most failures were grasps, not placing.
 

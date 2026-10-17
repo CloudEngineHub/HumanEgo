@@ -130,13 +130,18 @@ def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
             a.biasprm[2] = -kv_ratio * kp
             a.forcerange = [a.forcerange[0] * 2.0, a.forcerange[1] * 2.0]
         elif a.name == robot.gripper_actuator and robot.gripper_force_param:
-            f = float(phys.get("gripper_force", robot.gripper_force)) if robot.name == "trossen_wxai" else robot.gripper_force
+            # physics.gripper_force / gripper_kp_scale tune the Trossen (real rig); other robots use their
+            # RobotSpec values unless physics.robot_gripper.<robot> overrides them
+            rg = phys.get("robot_gripper", {}).get(robot.name, {})
+            trossen = robot.name == "trossen_wxai"
+            f = float(phys.get("gripper_force", robot.gripper_force)) if trossen else float(rg.get("force", robot.gripper_force))
             a.forcerange = [-f, f]
             a.forcelimited = 1
-            gk = float(phys.get("gripper_kp_scale", 1.0)) if robot.name == "trossen_wxai" else 1.0
+            gk = float(phys.get("gripper_kp_scale", 1.0)) if trossen else float(rg.get("kp_scale", robot.gripper_kp_scale))
             if gk != 1.0:              # servo stiffness: how hard a closed-on-bread gripper squeezes
                 a.gainprm[0] *= gk
                 a.biasprm[1] *= gk
+                a.biasprm[2] *= float(np.sqrt(gk))
     return child
 
 
