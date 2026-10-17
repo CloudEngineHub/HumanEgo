@@ -6,7 +6,7 @@ const el = (tag, attrs = {}, html = '') => { const e = document.createElement(ta
 const fmt = (x, d = 1) => (x == null ? '—' : Number(x).toFixed(d));
 const pct = (x) => `${Math.round(100 * x)}%`;
 
-const state = { manifest: null, robot: null, camera: null, mode: null, cfg: null, rollout: null, ro: null };
+const state = { manifest: null, robot: null, camera: null, mode: null, cfg: null, rollout: null, ro: null, live: false, liveScene: null, liveSession: null };
 const viewer = new SimViewer($('#viewport'));
 const video = $('#pip-video');
 
@@ -26,6 +26,7 @@ async function boot() {
   renderTuning();
   await selectConfig(qs.get('rollout') || d.rollout);
   if (qs.get('view')) viewer.setView(qs.get('view'), true);
+  if (qs.get('cam')) { const c = qs.get('cam').split(',').map(Number); viewer.setCustomView(c.slice(0, 3), c.slice(3, 6)); }
   if (qs.get('t') !== null) { pause(); viewer.setTime(parseFloat(qs.get('t'))); }
   document.body.dataset.ready = '1';
 }
@@ -59,6 +60,14 @@ function renderPills() {
       box.appendChild(b);
     }
   };
+  const run = $('#pills-run'); run.innerHTML = '';
+  for (const [val, label] of [[false, 'Replays'], [true, 'Live ✦']]) {
+    const b = el('button', { className: 'pill' + (state.live === val ? ' on' : ''), textContent: label,
+      title: val ? 'Run the released policy in your browser (MuJoCo WebAssembly + ONNX Runtime)' : 'Pre-computed policy rollouts' });
+    b.disabled = val && !(state.cfg?.live);
+    b.onclick = () => setLive(val);
+    run.appendChild(b);
+  }
   mk('#pills-robot', 'robot', Object.entries(m.robots));
   mk('#pills-camera', 'camera', Object.entries(m.cameras));
   mk('#pills-mode', 'mode', [['bimanual', 'Two arms'], ['single', 'One arm']]);
@@ -72,6 +81,8 @@ async function selectConfig(rolloutId) {
     renderPills();
   }
   state.cfg = cfg;
+  renderPills();
+  if (state.live && !cfg.live) await setLive(false);
   const ok = cfg.rollouts.flatMap(r => Object.values(r.per_side)).filter(s => s.success).length;
   const n = cfg.rollouts.flatMap(r => Object.values(r.per_side)).length;
   $('#count').textContent = `${cfg.rollouts.length} rollouts · ${pct(ok / Math.max(1, n))} served`;
@@ -79,7 +90,8 @@ async function selectConfig(rolloutId) {
   const model = await (await fetch(`data/models/${cfg.model}.json`)).json();
   await viewer.loadModel(model, (p) => showLoading(`Loading meshes… ${Math.round(p * 100)}%`));
   const pick = cfg.rollouts.find(r => r.id === rolloutId) || cfg.rollouts.find(r => r.featured) || cfg.rollouts[0];
-  await selectRollout(pick.id, true);
+  await selectRollout(pick.id, !state.live);
+  if (state.live) { state.liveScene = structuredClone(state.ro.scene); await state.liveSession.load(cfg.model); renderMinimap(); }
 }
 
 function showLoading(msg) { $('#loading-msg').textContent = msg; $('#loading').classList.remove('hide'); }
@@ -123,12 +135,13 @@ function renderResult() {
 
 // ------------------------------------------------------------------ minimap (top-down)
 // world x (forward) -> up, world y (left) -> left
-const MM = { w: 340, h: 300, x0: 0.18, x1: 0.80, y0: -0.52, y1: 0.52 };
-const mmX = (y) => 18 + (MM.y1 - y) / (MM.y1 - MM.y0) * (MM.w - 36);
-const mmY = (x) => 16 + (MM.x1 - x) / (MM.x1 - MM.x0) * (MM.h - 64);
+const MM = { w: 340, h: 300, x0: 0.18, x1: 0.78, y0: -0.52, y1: 0.52 };
+const MMK = Math.min((MM.w - 36) / (MM.y1 - MM.y0), (MM.h - 64) / (MM.x1 - MM.x0));   // px per metre (uniform)
+const mmX = (y) => MM.w / 2 - y * MMK;
+const mmY = (x) => 16 + (MM.x1 - x) * MMK;
 function renderMinimap() {
   const svg = $('#minimap');
-  const ro = state.ro, sc = ro.scene;
+  const ro = state.ro, sc = state.live && state.liveScene ? state.liveScene : ro.scene;
   const sides = Object.keys(ro.result.per_side);
   let s = `<defs><radialGradient id="pg" cx="50%" cy="45%"><stop offset="0%" stop-color="#cfe0f3"/><stop offset="100%" stop-color="#8fb0d6"/></radialGradient></defs>`;
   s += `<rect x="6" y="6" width="${MM.w - 12}" height="${MM.h - 50}" rx="10" fill="#1a1510" stroke="#3a2c1d"/>`;
@@ -139,7 +152,7 @@ function renderMinimap() {
   for (const yb of [0.3238, -0.3238]) s += `<circle cx="${mmX(yb)}" cy="${MM.h - 36}" r="9" fill="#11141a" stroke="#4b5363"/>`;
   s += `<rect x="${mmX(0) - 7}" y="${MM.h - 30}" width="14" height="9" rx="2" fill="#ff8c2b"/><text x="${mmX(0)}" y="${MM.h - 8}" fill="#6b7586" font-size="10" text-anchor="middle" font-family="Inter">camera</text>`;
   // all rollouts of this config as dots (bread positions)
-  for (const r of state.cfg.rollouts) {
+  for (const r of (state.live ? [] : state.cfg.rollouts)) {
     for (const side of sides) {
       const b = r.scene[`bread_${side}`]; if (!b) continue;
       const okk = r.per_side[side]?.success;
@@ -149,21 +162,20 @@ function renderMinimap() {
     }
   }
   // current layout
-  const p = sc.plate; const pr = 0.1225;
-  const rx = (mmX(-pr) - mmX(pr)) / 2, ry = (mmY(-pr) - mmY(pr)) / 2;
-  s += `<ellipse cx="${mmX(p[1])}" cy="${mmY(p[0])}" rx="${Math.abs(rx)}" ry="${Math.abs(ry)}" fill="url(#pg)" stroke="#e6f0fb" stroke-opacity=".7"/>`;
+  const p = sc.plate; const pr = 0.1225 * MMK;
+  s += `<circle class="${state.live ? 'mm-bread' : ''}" data-obj="plate" cx="${mmX(p[1])}" cy="${mmY(p[0])}" r="${pr}" fill="url(#pg)" stroke="#e6f0fb" stroke-opacity=".7" style="${state.live ? 'cursor:grab' : ''}"/>`;
   for (const side of sides) {
     const b = sc[`bread_${side}`]; if (!b) continue;
     const L = side === 'right' && state.cfg.mode === 'bimanual' ? 0.12 : 0.138, W = 0.066;
-    const cx = mmX(b[1]), cy = mmY(b[0]);
-    const sx = (mmX(-1) - mmX(1)) / 2 / -1, sy = (mmY(-1) - mmY(1)) / 2;
-    const ang = -(b[2]) + 90;   // map yaw (about +z, x->up) into svg rotation
-    s += `<g class="mm-bread" data-side="${side}" transform="translate(${cx},${cy}) rotate(${ang})" style="cursor:grab">
-            <ellipse rx="${Math.abs(L / 2 * sx)}" ry="${Math.abs(W / 2 * sy)}" fill="#d98a3a" stroke="#ffcf9e" stroke-width="1.5"/></g>`;
+    const th = b[2] * Math.PI / 180;     // long axis (cos th, sin th) in world x/y -> map (-sin, -cos)
+    const ang = Math.atan2(-Math.cos(th), -Math.sin(th)) * 180 / Math.PI;
+    s += `<g class="mm-bread" data-side="${side}" data-obj="bread_${side}" transform="translate(${mmX(b[1])},${mmY(b[0])}) rotate(${ang})" style="cursor:grab">
+            <ellipse rx="${L / 2 * MMK}" ry="${W / 2 * MMK}" fill="#d98a3a" stroke="#ffcf9e" stroke-width="1.5"/></g>`;
   }
   svg.innerHTML = s;
   $('#mm-meta').textContent = `${state.cfg.rollouts.length} scenes`;
   svg.querySelectorAll('.mm-dot').forEach(d => d.addEventListener('click', () => selectRollout(d.dataset.id)));
+  if (state.live) { liveEditor(svg); return; }
   // drag a bread -> snap to the nearest rollout (by that arm's bread position)
   svg.querySelectorAll('.mm-bread').forEach(g => {
     g.addEventListener('pointerdown', (ev) => {
@@ -189,6 +201,103 @@ function renderMinimap() {
       };
       window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     });
+  });
+}
+
+// ------------------------------------------------------------------ live mode
+const LIM = { x: [0.30, 0.62], y: [-0.46, 0.46] };
+function liveEditor(svg) {
+  $('#mm-meta').textContent = 'drag anything · scroll to rotate';
+  svg.querySelectorAll('[data-obj]').forEach(g => {
+    const name = g.dataset.obj;
+    g.addEventListener('wheel', (ev) => {
+      if (name === 'plate') return;
+      ev.preventDefault(); state.liveScene[name][2] += ev.deltaY > 0 ? 8 : -8; renderMinimap();
+    }, { passive: false });
+    g.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      const pt = svg.createSVGPoint();
+      const move = (e) => {
+        pt.x = e.clientX; pt.y = e.clientY;
+        const q = pt.matrixTransform(svg.getScreenCTM().inverse());
+        const x = Math.min(Math.max(MM.x1 - (q.y - 16) / MMK, LIM.x[0]), LIM.x[1]);
+        const y = Math.min(Math.max((MM.w / 2 - q.x) / MMK, LIM.y[0]), LIM.y[1]);
+        state.liveScene[name][0] = +x.toFixed(3); state.liveScene[name][1] = +y.toFixed(3);
+        renderMinimap();
+      };
+      const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+    });
+  });
+}
+
+async function ensureOrt() {
+  if (window.ort) return;
+  await new Promise((res, rej) => { const sc = document.createElement('script');
+    sc.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.0/dist/ort.all.min.js'; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc); });
+}
+
+async function setLive(on) {
+  if (on === state.live) return;
+  state.live = on;
+  renderPills();
+  $('#mm-help').innerHTML = on
+    ? 'Place the <b>plate</b> and the <b>breads</b> anywhere, then press <b>Run live</b>: the released policy runs <b>in your browser</b> (MuJoCo WebAssembly physics + ONNX Runtime).'
+    : 'Each dot is a <b>pre-computed policy rollout</b> (green = served, red = failed). Click a dot or <b>drag the bread</b> to snap to the nearest initial condition.';
+  $('#btn-replay-l').textContent = on ? 'Run live' : 'Replay';
+  $('#pip-video').style.display = on ? 'none' : '';
+  $('#pip-canvas').style.display = on ? '' : 'none';
+  document.querySelector('.timeline').style.visibility = on ? 'hidden' : '';
+  if (!on) { state.liveSession?.stop(); viewer.endLive(); await selectRollout(state.rollout.id, true); renderMinimap(); return; }
+  pause();
+  state.liveScene = structuredClone(state.ro.scene);
+  renderMinimap();
+  showLoading('Preparing live mode…');
+  try {
+    await ensureOrt();
+    const { LiveSession } = await import('./live/live.js');
+    state.liveSession ||= new LiveSession(viewer, (m) => { $('#loading-msg').textContent = m; liveStatus(m); });
+    await state.liveSession.load(state.cfg.model);
+    hideLoading();
+  } catch (e) { console.error(e); showLoading('Live mode failed: ' + e.message); }
+}
+
+function liveStatus(msg) {
+  $('#hud-title').innerHTML = `<span class="dot"></span><span>Live · ${msg}</span>`;
+}
+
+async function runLive() {
+  const ls = state.liveSession; if (!ls) return;
+  const pc = $('#pip-canvas'), g = pc.getContext('2d');
+  g.fillStyle = '#05070a'; g.fillRect(0, 0, pc.width, pc.height);
+  $('#result').innerHTML = '<div class="res-sum"><span>Running the policy…</span></div>';
+  const sides = state.cfg.mode === 'single' ? ['right'] : ['right', 'left'];
+  const t0 = performance.now(); let nPol = 0;
+  $('#pip').style.opacity = 1;
+  viewer.onLiveTime = (t, entries) => {
+    let html = '';
+    for (const side of sides) {
+      const e = entries[side], ctx = ls.ep?.ctx?.[side];
+      let phase = 'waiting', cls = '';
+      if (!ctx) phase = 'scene setup';
+      else if (ctx.wrap) { phase = ctx.wrap === 'finished' ? 'done' : 'releasing'; cls = 'done'; }
+      else if (!ctx.active) phase = `starts at ${state.liveSession.spec.control.bimanual_start_delay ?? 6} s`;
+      else if (e) { phase = e.grasping ? 'carrying' : (e.gmax > 0.5 ? 'reaching to grasp' : 'reaching'); if (e.grasping) cls = 'grasp'; }
+      html += `<span class="arm-badge ${cls}"><b>${side === 'right' ? 'R' : 'L'}</b>${phase}</span>`;
+    }
+    const box = $('#arm-state'); if (box.innerHTML !== html) box.innerHTML = html;
+  };
+  await ls.run(state.liveScene, Math.floor(Math.random() * 1000), (side, e) => {
+    nPol++;
+    const i = sides.indexOf(side); if (i < 0 || !e.image) return;
+    g.drawImage(e.image, i * 256, 0, 256, 192);
+    liveStatus(`${ls.policy.device === 'webgpu' ? 'WebGPU' : 'CPU'} · t = ${ls.ep.t.toFixed(1)} s · re-plan ${nPol}`);
+  }, (res) => {
+    const box = $('#result'); box.innerHTML = '';
+    for (const [side, r] of Object.entries(res)) box.appendChild(el('div', { className: 'res-arm' }, `<div class="k">${side} arm</div>
+      <div class="v ${r.success ? 'ok' : 'bad'}">${r.success ? '✓ Served' : '✗ Missed'}</div><div class="s">${fmt(100 * r.dist_to_plate_center, 1)} cm from plate centre</div>`));
+    box.appendChild(el('div', { className: 'res-sum' }, `<span>Live run <b>${fmt(ls.ep.t, 1)} s</b> sim time</span><span>${((performance.now() - t0) / 1000).toFixed(0)} s wall</span>`));
+    $('#res-meta').textContent = 'live';
   });
 }
 
@@ -238,6 +347,7 @@ viewer.onTime = (t) => {
 };
 viewer.onEnded = () => setPlayIcon(false);
 
+video.addEventListener('loadedmetadata', () => { syncVideo.k = undefined; syncVideo(viewer.time); });
 function syncVideo(t) {
   const ro = state.ro; if (!ro || !ro.policy_video || !video.duration) return;
   const k = viewer.currentPolicy;
@@ -288,10 +398,16 @@ document.querySelectorAll('[data-ov]').forEach(b => b.onclick = () => {
   else viewer.setOverlay(b.dataset.ov, on);
 });
 $('#btn-shuffle').onclick = () => {
+  if (state.live) {   // paper protocol: random offsets / depths / yaw
+    const R = (a, b) => a + Math.random() * (b - a), sc = { plate: [R(0.41, 0.53), R(-0.05, 0.05), 0] };
+    if (state.cfg.mode === 'single') { sc.plate[1] = R(0.05, 0.17); sc.bread_right = [R(0.39, 0.55), sc.plate[1] - R(0.16, 0.38), R(55, 125)]; }
+    else for (const [s, sg] of [['right', -1], ['left', 1]]) sc[`bread_${s}`] = [R(0.38, 0.54), sc.plate[1] + sg * R(0.2, 0.35), R(55, 125)];
+    state.liveScene = sc; renderMinimap(); return;
+  }
   const rs = state.cfg.rollouts.filter(r => r.id !== state.rollout.id);
   selectRollout(rs[Math.floor(Math.random() * rs.length)].id);
 };
-$('#btn-replay').onclick = () => play(true);
+$('#btn-replay').onclick = () => (state.live ? runLive() : play(true));
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
   if (e.code === 'Space') { e.preventDefault(); viewer.playing ? pause() : play(); }
@@ -339,4 +455,5 @@ function renderTuning() {
   $('#tune-note').innerHTML = tun.note || '';
 }
 
+window.__sim = { viewer, state, syncVideo };
 boot().catch(e => { console.error(e); showLoading('Failed to load: ' + e.message); });

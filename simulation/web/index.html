@@ -36,6 +36,7 @@
 
 <div class="bar">
   <div class="bar-in">
+    <div class="grp"><span class="grp-l">Mode</span><span id="pills-run" class="grp"></span></div>
     <div class="grp"><span class="grp-l">Robot</span><span id="pills-robot" class="grp"></span></div>
     <div class="grp"><span class="grp-l">Camera</span><span id="pills-camera" class="grp"></span></div>
     <div class="grp"><span class="grp-l">Arms</span><span id="pills-mode" class="grp"></span></div>
@@ -56,6 +57,7 @@
         <div class="hud hud-tr" id="pip-wrap">
           <div class="pip" id="pip">
             <video id="pip-video" muted playsinline preload="auto"></video>
+            <canvas id="pip-canvas" width="512" height="192" style="display:none; width:100%; aspect-ratio:8/3"></canvas>
             <div class="pip-cap"><b>Policy input</b><span id="pip-cap">clean image + keypoints</span></div>
           </div>
         </div>
@@ -85,11 +87,11 @@
       <div class="card">
         <div class="card-h"><h3>Initial condition</h3><span class="meta" id="mm-meta"></span></div>
         <svg class="minimap" id="minimap" viewBox="0 0 340 300"></svg>
-        <div class="mm-help">Each dot is a <b>pre-computed policy rollout</b> (green = served, red = failed).
+        <div class="mm-help" id="mm-help">Each dot is a <b>pre-computed policy rollout</b> (green = served, red = failed).
           Click a dot or <b>drag the bread</b> to snap to the nearest initial condition.</div>
         <div class="row-btns">
           <button class="btn" id="btn-shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Shuffle</button>
-          <button class="btn primary" id="btn-replay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg>Replay</button>
+          <button class="btn primary" id="btn-replay"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"/></svg><span id="btn-replay-l">Replay</span></button>
         </div>
       </div>
       <div class="card">

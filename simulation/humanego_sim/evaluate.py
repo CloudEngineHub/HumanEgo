@@ -22,6 +22,16 @@ _W = {}
 
 def _worker_init(cfg_overrides: dict, device: str, intro: bool = False):
     os.environ.setdefault("MUJOCO_GL", "egl")
+    # one thread per worker: OpenCV / torch / BLAS thread pools oversubscribe the CPU otherwise
+    import cv2
+    import torch
+    cv2.setNumThreads(1)
+    torch.set_num_threads(1)
+    try:
+        from threadpoolctl import threadpool_limits
+        threadpool_limits(1)
+    except Exception:
+        pass
     import warnings
     warnings.filterwarnings("ignore")
     from .env import load_config
@@ -59,6 +69,8 @@ def evaluate(cfg_overrides: Optional[dict] = None, n_episodes: int = 16, workers
         ld = os.path.join(log_root, f"ep{i:03d}") if log_root else None
         jobs.append((i, sc, seed * 1000 + i, ld))
     t0 = time.time()
+    for k in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):
+        os.environ[k] = "1"           # inherited by the spawned workers
     ctx = mp.get_context("spawn")
     with ctx.Pool(processes=min(workers, len(jobs)), initializer=_worker_init,
                   initargs=(cfg_overrides, device, intro)) as pool:
@@ -81,12 +93,15 @@ def classify_failure(side_res: dict) -> str:
     if side_res.get("success"):
         return "success"
     if not side_res.get("grasped"):
-        return "no_grasp"
+        return "never_closed"
+    lifted = side_res.get("bread_max_z", 1.0) > 0.07
+    d = side_res.get("dist_to_plate_center", 1.0)
+    if not lifted:
+        return "grasp_missed"            # gripper closed but the bread never left the table
+    if d > 0.16:
+        return "dropped_in_transit"
     if side_res.get("done_reason") == "timeout":
         return "timeout"
-    d = side_res.get("dist_to_plate_center", 1.0)
-    if d > 0.16:
-        return "dropped_off_plate"
     return "rim_or_edge"
 
 

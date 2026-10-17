@@ -29,16 +29,16 @@ def render_episode_video(env, log_dir: str, out_path: str = None, camera: str = 
     m, d = env.m, env.d
     last_imgs = {}
     for fr in frames:
-        for s, q in fr["qpos"].items():
-            arm = env.arms[s]
-            d.qpos[arm.qadr] = q[:6]
-            for j in range(m.njnt):
-                nm = m.joint(j).name
-                if nm.startswith(f"{s}/") and "carriage" in nm:
-                    d.qpos[m.jnt_qposadr[j]] = q[6]
-        for name, pq in fr["objects"].items():
-            qa = env.obj_free_qadr[name]
-            d.qpos[qa:qa + 7] = pq
+        if "qfull" in fr:
+            d.qpos[:] = fr["qfull"]
+        else:
+            for s, q in fr["qpos"].items():
+                arm = env.arms[s]
+                d.qpos[arm.qadr] = q[:len(arm.qadr)]
+                d.qpos[arm.g_qadr] = q[len(arm.qadr)]
+            for name, pq in fr["objects"].items():
+                qa = env.obj_free_qadr[name]
+                d.qpos[qa:qa + 7] = pq
         mujoco.mj_forward(m, d)
         r.update_scene(d, camera=camera)
         main = np.ascontiguousarray(r.render()[:, :, ::-1])

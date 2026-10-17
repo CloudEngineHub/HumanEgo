@@ -17,3 +17,5 @@ web/assets/objects/
 web/assets/robots/
 web/assets/textures/
 MUJOCO_LOG.TXT
+web/assets/policy/
+web/assets/live/

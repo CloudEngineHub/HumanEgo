@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>MuJoCo WASM smoke test</title></head>
+<body><pre id="out">running…</pre>
+<script type="module">
+import loadMujoco from 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.16.0/mujoco.js';
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += '\n' + s; console.log(s); };
+try {
+  const t0 = performance.now();
+  const mj = await loadMujoco();
+  log(`loaded wasm in ${(performance.now() - t0).toFixed(0)} ms`);
+  const base = '../assets/live/trossen_wxai_realsense_d405_bimanual/';
+  const files = await (await fetch(base + 'files.json')).json();
+  mj.FS.mkdir('/live'); mj.FS.mkdir('/live/meshes');
+  for (const f of [files.xml, ...files.files]) {
+    const buf = new Uint8Array(await (await fetch(base + f)).arrayBuffer());
+    mj.FS.writeFile('/live/' + f, buf);
+  }
+  const model = mj.MjModel.from_xml_path('/live/scene.xml');
+  const data = new mj.MjData(model);
+  log(`model nq=${model.nq} nv=${model.nv} nu=${model.nu} timestep=${model.opt.timestep}`);
+  const sid = model.site('right/ee_gripper_link').id;
+  const bid = model.body('bread_right').id;
+  mj.mj_forward(model, data);
+  log(`site xpos ${Array.from(data.site_xpos.slice(3 * sid, 3 * sid + 3)).map(v => v.toFixed(3))}`);
+  const jacp = new mj.DoubleBuffer(3 * model.nv), jacr = new mj.DoubleBuffer(3 * model.nv);
+  mj.mj_jacSite(model, data, jacp, jacr, sid);
+  const J = jacp.GetView();
+  log(`jacp[0..5] ${Array.from(J.slice(0, 6)).map(v => v.toFixed(3))}`);
+  const t1 = performance.now();
+  for (let i = 0; i < 2000; i++) mj.mj_step(model, data);
+  const dt = performance.now() - t1;
+  log(`2000 steps (4 s sim): ${dt.toFixed(0)} ms  ->  ${(4000 / dt).toFixed(1)}x real time`);
+  log(`bread z after settle ${data.xpos[3 * bid + 2].toFixed(4)}`);
+  window.__done = 'ok';
+} catch (e) { log('ERROR ' + e + '\n' + e.stack); window.__done = 'error'; }
+</script></body></html>

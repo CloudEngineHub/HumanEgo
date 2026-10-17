@@ -284,6 +284,7 @@ class EpisodeRunner:
         next_pol, next_ctl, next_rec = 0.0, 0.0, 0.0
         pending = None          # (deliver_time, payload) — inference latency
         frames, policy_log = list(intro_frames), []
+        self._bread_max_z = {}
         img_dir = None
         if log_dir:
             os.makedirs(log_dir, exist_ok=True)
@@ -357,6 +358,10 @@ class EpisodeRunner:
                 frames.append(snap)
                 next_rec += rec_dt
             env.step()
+            for s in sides:
+                bz = env.d.xpos[env.obj_bodies[f"bread_{s}"]][2]
+                if bz > self._bread_max_z.get(s, 0.0):
+                    self._bread_max_z[s] = float(bz)
             if all(c.wrap_phase == "finished" for c in ctxs.values()):
                 # keep recording a short tail so the viewer can ease out
                 tail_end = env.t + 0.6
@@ -395,6 +400,7 @@ class EpisodeRunner:
             released = not env.arms[s].gripper_cmd_closed()
             out[s] = {"success": bool(on_plate and released), "dist_to_plate_center": round(dxy, 4),
                       "bread_z": round(float(Tb[2, 3]), 4), "grasped": bool(ctx.hand["has_ever_grasped"]),
+                      "bread_max_z": round(getattr(self, "_bread_max_z", {}).get(s, 0.0), 4),
                       "done_reason": ctx.done_reason or "timeout"}
         return out
 

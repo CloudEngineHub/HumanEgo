@@ -52,6 +52,8 @@ DEFAULT_SPACE: List[ParamSpec] = [
     ParamSpec("control.max_pos_step", 0.02, 0.15, 0.08, "log", note="safety cage, m per tick"),
     ParamSpec("control.max_rot_step", 0.01, 0.30, 0.02, "log", note="safety cage, rad per tick"),
     ParamSpec("control.grasp_threshold", 0.35, 0.72, 0.6, note="grasp prob -> close (policy peaks ~0.7)"),
+    ParamSpec("control.grasp_k_any", 20, 50, 50, "int", note="close if grasp intent within the next k steps (50 = 'any')"),
+    ParamSpec("control.tcp_offset", -0.02, 0.01, 0.0, note="TCP shift along approach (m); <0 = fingers reach deeper"),
     ParamSpec("control.idle_time_limit", 0.5, 3.5, 1.5, note="s holding near the plate before release"),
     ParamSpec("control.idle_dist_threshold", 0.04, 0.18, 0.13, note="hand-to-plate distance for release"),
     ParamSpec("control.forced_lift_height", 0.0, 0.10, 0.05, note="post-grasp lift bias, m"),

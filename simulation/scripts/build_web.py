@@ -28,6 +28,7 @@ from humanego_sim.evaluate import evaluate  # noqa: E402
 from humanego_sim.robots import ROBOTS  # noqa: E402
 from humanego_sim.sampling import sample_scene  # noqa: E402
 from humanego_sim.web_export import export_model, export_rollout  # noqa: E402
+from humanego_sim.live_export import export_live  # noqa: E402
 
 WEB = os.path.join(SIM, "web")
 
@@ -86,6 +87,7 @@ def build_config(robot, camera, mode, n, workers, seed, overrides):
     env = ServeBreadSim(cfg)
     model_key = key
     export_model(env, WEB, model_key)
+    export_live(env, WEB, model_key)          # physics-only MJCF for the in-browser Live mode
     rng = np.random.default_rng(seed)
     scenes = [sample_scene(rng, mode) for _ in range(n)]
     log_root = os.path.join(SIM, "runs", "web", key)
@@ -139,6 +141,8 @@ def write_manifest(configs, tuning_name):
                                                 c["mode"] != "bimanual"))
     summary = []
     for c in cfgs:
+        c["live"] = os.path.exists(os.path.join(WEB, "assets", "live", c["model"], "spec.json")) and \
+            os.path.exists(os.path.join(WEB, "assets", "policy", "serve_bread_meta.json"))
         rs = c["rollouts"]
         side = lambda s: (np.mean([r["per_side"][s]["success"] for r in rs if s in r["per_side"]])
                           if any(s in r["per_side"] for r in rs) else None)

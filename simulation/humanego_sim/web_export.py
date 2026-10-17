@@ -32,7 +32,8 @@ GT = {mujoco.mjtGeom.mjGEOM_PLANE: "plane", mujoco.mjtGeom.mjGEOM_BOX: "box",
 
 # web materials (PBR) keyed by MuJoCo material name suffix
 WEB_MATERIALS = {
-    "trossen_material": {"color": [1, 1, 1], "map": "assets/textures/trossen_BaseColor.png", "roughness": 0.45, "metalness": 0.15},
+    "trossen_material": {"color": [1, 1, 1], "map": "assets/textures/trossen_BaseColor.png", "roughness": 0.42,
+                         "metalness": 0.0, "lift": 2.4, "coat": 0.45, "envIntensity": 1.4},
     "maple": {"color": [1, 1, 1], "map": "assets/textures/maple.jpg", "roughness": 0.55, "metalness": 0.0, "repeat": [2, 2]},
     "frame_black": {"color": [0.05, 0.05, 0.055], "roughness": 0.35, "metalness": 0.6},
     "floor": {"color": [0.72, 0.72, 0.70], "roughness": 0.9, "metalness": 0.0},
@@ -63,7 +64,12 @@ def export_mesh_glb(m: mujoco.MjModel, mesh_ids: List[int], out_path: str, strip
         if m.mesh_texcoordnum[mid] > 0:
             ta = m.mesh_texcoordadr[mid]
             uv = m.mesh_texcoord[ta + m.mesh_facetexcoord[fa:fa + fn].reshape(-1)].copy()
-        faces = np.arange(len(pos)).reshape(-1, 3)
+        # weld identical (position, normal, uv) corners -> indexed mesh (3-4x smaller GLB)
+        key = np.hstack([np.round(pos, 5), np.round(nrm, 3)] + ([np.round(uv, 4)] if uv is not None else []))
+        uniq, inv = np.unique(key, axis=0, return_inverse=True)
+        pos, nrm = uniq[:, :3], uniq[:, 3:6]
+        uv = uniq[:, 6:8] if uv is not None else None
+        faces = inv.reshape(-1, 3)
         vis = trimesh.visual.TextureVisuals(uv=uv) if uv is not None else None
         tm = trimesh.Trimesh(vertices=pos, faces=faces, vertex_normals=nrm, visual=vis, process=False)
         scene.add_geometry(tm, node_name=name, geom_name=name)
@@ -142,6 +148,7 @@ def export_model(env, out_root: str, key: str) -> Dict:
         "bodies": bodies, "geoms": geoms, "materials": WEB_MATERIALS, "tool_sites": tool_sites,
         "policy_camera": {"T_cam_in_world": _r(env.T_cam_in_world), "K": _r(env.K), "width": env.W, "height": env.H},
         "objects": {k: {"qadr": int(env.obj_free_qadr[k])} for k in env.obj_bodies},
+        "finger_bodies": list(env.robot.finger_bodies),
     }
     p = os.path.join(out_root, "data", "models", f"{key}.json")
     os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -159,7 +166,7 @@ def export_rollout(env, log_dir: str, out_root: str, rid: str, scene_meta: Optio
     for fr in ep["frames"]:
         if "qfull" in fr:
             q = fr["qfull"]
-            frames.append([round(fr["t"], 3)] + [round(float(v), 4) for v in q])
+            frames.append([round(fr["t"], 3)] + [round(float(v), 3) for v in q])
             continue
         q = np.array(d.qpos)  # template
         for s, qs in fr["qpos"].items():
@@ -177,8 +184,11 @@ def export_rollout(env, log_dir: str, out_root: str, rid: str, scene_meta: Optio
     for st in ep["policy"]:
         e = {"t": round(st["t"], 3), "sides": {}}
         for s, v in st["sides"].items():
-            e["sides"][s] = {"traj": [[round(x, 3) for x in p] for p in v["traj_world"]],
-                             "grasp": v["grasp"], "done": v["done"], "grasping": v["grasping"]}
+            tr = v["traj_world"]
+            idx = sorted(set(list(range(0, len(tr), 2)) + [len(tr) - 1])) if tr else []
+            e["sides"][s] = {"traj": [[round(x, 3) for x in tr[i]] for i in idx], "traj_step": 2,
+                             "grasp": [round(g, 2) for g in v["grasp"][:12]], "gmax": round(max(v["grasp"]), 2) if v["grasp"] else 0,
+                             "done": round(v["done"], 3), "grasping": v["grasping"]}
         pol.append(e)
     # policy-view video: one tile per side, side-by-side, one frame per policy step
     vid_rel = None
@@ -189,16 +199,17 @@ def export_rollout(env, log_dir: str, out_root: str, rid: str, scene_meta: Optio
         os.makedirs(os.path.dirname(vp), exist_ok=True)
         sides = env.sides
         P = ep["policy"][1]["t"] - ep["policy"][0]["t"] if len(ep["policy"]) > 1 else 0.3
-        w = imageio.get_writer(vp, fps=round(1.0 / P, 4), codec="libx264", quality=6, macro_block_size=8,
-                               ffmpeg_params=["-g", "6", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
-        last = {s: np.zeros((240, 320, 3), np.uint8) for s in sides}
+        w = imageio.get_writer(vp, fps=round(1.0 / P, 4), codec="libx264", macro_block_size=8,
+                               ffmpeg_params=["-g", "8", "-crf", "28", "-preset", "slow", "-movflags", "+faststart"])
+        TW, TH = 256, 192
+        last = {s: np.zeros((TH, TW, 3), np.uint8) for s in sides}
         for st in ep["policy"]:
             for s in sides:
                 e = st["sides"].get(s)
                 if e and e.get("image"):
                     im = cv2.imread(os.path.join(img_dir, e["image"]))
                     if im is not None:
-                        last[s] = cv2.resize(im, (320, 240), interpolation=cv2.INTER_AREA)
+                        last[s] = cv2.resize(im, (TW, TH), interpolation=cv2.INTER_AREA)
             tile = np.hstack([last[s] for s in sides])
             w.append_data(tile[:, :, ::-1])
         w.close()

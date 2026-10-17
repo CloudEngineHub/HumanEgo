@@ -396,7 +396,10 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         g.density = 0
         d = os.path.join(ASSETS, "objects", kind)
         n_col = len([f for f in os.listdir(d) if f.startswith(f"{kind}_col")])
-        vol = 0.0
+        # MuJoCo derives mass from geom volume x density: pick the density that gives the real weight
+        import trimesh
+        vol = sum(trimesh.load(os.path.join(d, f"{kind}_col{i}.obj"), force="mesh").convex_hull.volume for i in range(n_col))
+        dens = float(bm.get(kind, 0.055)) / max(vol, 1e-9)
         for i in range(n_col):
             gc = b.add_geom()
             gc.name = f"bread_{s}_col{i}"
@@ -409,9 +412,7 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
             gc.priority = 1          # bread's (soft) contact parameters win against the finger pads
             gc.condim = int(phys.get("bread_condim", 4))
             gc.rgba = [0.8, 0.5, 0.2, 0.0]
-        # total mass set explicitly (photoscan volume is not the real density)
-        b.mass = float(bm.get(kind, 0.055))
-        b.explicitinertial = False
+            gc.density = dens
         obj_meta[f"bread_{s}"] = {"kind": kind, "extents": ext.tolist(), "side": s}
 
     # plate: visual lathe mesh + primitive collision (flat well + tilted rim ring)
@@ -456,7 +457,10 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         gr.quat = _quat_wxyz(Rm)
         gr.group = G_COLLISION
         gr.rgba = [0, 0, 1, 0]
-    pb.mass = float(phys.get("plate_mass", 0.45))
+    plate_vol = np.pi * (rw + 0.004) ** 2 * (fh + tt) + n_seg * (L * 2 * half_w * 0.005)
+    for gg in pb.geoms:
+        if gg.name.startswith("plate_well") or gg.name.startswith("plate_rim"):
+            gg.density = float(phys.get("plate_mass", 0.45)) / plate_vol
     obj_meta["plate"] = {"kind": "plate", "R": Rr, "H": H}
 
     # ---------------- write ----------------

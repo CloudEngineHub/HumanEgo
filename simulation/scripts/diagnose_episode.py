@@ -21,13 +21,16 @@ from humanego_sim.env import ServeBreadSim, load_config  # noqa: E402
 
 def load_state(env, fr):
     m, d = env.m, env.d
-    for s, q in fr["qpos"].items():
-        arm = env.arms[s]
-        d.qpos[arm.qadr] = q[:6]
-        d.qpos[arm.g_qadr] = q[6]
-    for name, pq in fr["objects"].items():
-        qa = env.obj_free_qadr[name]
-        d.qpos[qa:qa + 7] = pq
+    if "qfull" in fr:
+        d.qpos[:] = fr["qfull"]
+    else:
+        for s, q in fr["qpos"].items():
+            arm = env.arms[s]
+            d.qpos[arm.qadr] = q[:len(arm.qadr)]
+            d.qpos[arm.g_qadr] = q[len(arm.qadr)]
+        for name, pq in fr["objects"].items():
+            qa = env.obj_free_qadr[name]
+            d.qpos[qa:qa + 7] = pq
     mujoco.mj_forward(m, d)
 
 
@@ -44,7 +47,7 @@ def diagnose(log_dir, cfg_over=None):
         events = []
         for i, fr in enumerate(frames):
             g = fr["grip_cmd"][s]
-            closed = g < 0.5 * arm.robot.gripper_open
+            closed = abs(g - arm.robot.gripper_closed) < abs(g - arm.robot.gripper_open)
             if prev is not None and closed and not prev:
                 # the command started closing at this frame; look 0.6 s later (fingers settled)
                 j = min(i + 18, len(frames) - 1)

@@ -6,6 +6,10 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const TMP_M = new THREE.Matrix4(), TMP_M2 = new THREE.Matrix4();
 const TMP_Q = new THREE.Quaternion(), TMP_Q2 = new THREE.Quaternion();
@@ -36,7 +40,7 @@ export class SimViewer {
     r.toneMapping = THREE.NeutralToneMapping;
     r.toneMappingExposure = 1.05;
     r.shadowMap.enabled = true;
-    r.shadowMap.type = THREE.PCFSoftShadowMap;
+    r.shadowMap.type = THREE.VSMShadowMap;
     r.setClearColor(0x000000, 0);
     container.appendChild(r.domElement);
     r.domElement.style.background = 'radial-gradient(120% 95% at 50% 38%, #d4d3cf 0%, #bdbcb8 46%, #9f9e9a 100%)';
@@ -65,7 +69,7 @@ export class SimViewer {
     key.castShadow = true;
     key.shadow.mapSize.set(4096, 4096);
     const sc = key.shadow.camera; sc.left = -1.1; sc.right = 1.1; sc.top = 1.1; sc.bottom = -1.1; sc.near = 0.5; sc.far = 6;
-    key.shadow.bias = -0.00025; key.shadow.normalBias = 0.012; key.shadow.radius = 6; key.shadow.blurSamples = 16;
+    key.shadow.bias = -0.0004; key.shadow.normalBias = 0.0; key.shadow.radius = 9; key.shadow.blurSamples = 20;
     scene.add(key, key.target);
     const rim = new THREE.DirectionalLight(0xdfe8ff, 0.55);
     rim.position.set(-1.6, 1.8, 1.6);
@@ -95,6 +99,16 @@ export class SimViewer {
     this.overlayRoot = new THREE.Group();
     scene.add(this.overlayRoot);
 
+    this.hq = opts.hq ?? !/Mobi|Android/i.test(navigator.userAgent);
+    if (this.hq) {
+      this.composer = new EffectComposer(r);
+      this.composer.addPass(new RenderPass(scene, this.camera));
+      const ao = this.ao = new GTAOPass(scene, this.camera, 640, 360);
+      ao.updateGtaoMaterial({ radius: 0.035, distanceExponent: 1.4, thickness: 0.6, scale: 1.0, samples: 16 });
+      ao.blendIntensity = 0.7;
+      this.composer.addPass(ao);
+      this.composer.addPass(new OutputPass());
+    }
     this.setView('front', true);
     this.resize();
     new ResizeObserver(() => this.resize()).observe(container);
@@ -109,9 +123,10 @@ export class SimViewer {
     const w = this.container.clientWidth, h = this.container.clientHeight;
     if (!w || !h) return;
     this.renderer.setSize(w, h, false);
+    if (this.composer) { this.composer.setSize(w, h); this.composer.setPixelRatio(this.renderer.getPixelRatio()); }
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    for (const l of this.trajLines || []) l.material.resolution.set(w, h);
+    for (const l of [...(this.trajLines || []), ...(this.trajGhosts || [])]) l.material.resolution.set(w, h);
   }
 
   // ------------------------------------------------------------------ assets
@@ -126,7 +141,8 @@ export class SimViewer {
       t.colorSpace = THREE.SRGBColorSpace;
       t.anisotropy = 8;
       t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      if (mat.flipY === false) t.flipY = false;
+      const qf = new URLSearchParams(location.search).get('flipy');
+      if (mat.flipY === false || qf === '0') t.flipY = false;
       if (mat.repeat) t.repeat.set(mat.repeat[0], mat.repeat[1]);
       this.cache.set(key, t);
     }
@@ -138,12 +154,19 @@ export class SimViewer {
     const spec = (name && model.materials[name]) || null;
     let m;
     if (spec) {
-      const P = spec.clearcoat ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
+      const P = (spec.clearcoat || spec.coat) ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial;
       m = new P({ color: new THREE.Color(...spec.color), roughness: spec.roughness ?? 0.6, metalness: spec.metalness ?? 0 });
       if (spec.clearcoat) { m.clearcoat = spec.clearcoat; m.clearcoatRoughness = 0.08; }
       if (spec.map) m.map = this._tex(spec.map, spec);
+      if (spec.lift) m.color.multiplyScalar(spec.lift);              // brighten very dark baked textures
+      if (spec.clearcoat === undefined && spec.coat) { m.clearcoat = spec.coat; m.clearcoatRoughness = 0.35; }
+      if (spec.envIntensity) m.envMapIntensity = spec.envIntensity;
     } else {
-      m = new THREE.MeshStandardMaterial({ color: new THREE.Color(rgba[0], rgba[1], rgba[2]), roughness: 0.6, metalness: 0.05 });
+      // Menagerie materials are plain rgba: render them as painted / plastic surfaces
+      const lum = 0.299 * rgba[0] + 0.587 * rgba[1] + 0.114 * rgba[2];
+      m = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(rgba[0], rgba[1], rgba[2]),
+        roughness: lum > 0.6 ? 0.32 : 0.42, metalness: lum < 0.25 ? 0.25 : 0.0, clearcoat: lum > 0.6 ? 0.35 : 0.1,
+        clearcoatRoughness: 0.25 });
     }
     this.cache.set(key, m);
     return m;
@@ -180,6 +203,14 @@ export class SimViewer {
         } else {
           obj = gl.scene.clone(true);
           if (g.yup) obj.rotation.x = Math.PI / 2;
+          // photoscans ship a baked AO; GTAO adds contact shading on top, so damp the baked one
+          obj.traverse(o => { if (o.isMesh && o.material && o.material.aoMap) { o.material.aoMapIntensity = 0.3; o.material.envMapIntensity = 1.35; } });
+          const ms = g.material && model.materials[g.material];
+          if (ms) {   // e.g. the ceramic plate: physically based override, double sided
+            const mat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(...ms.color), roughness: ms.roughness ?? 0.2,
+              metalness: 0, clearcoat: ms.clearcoat ?? 0.8, clearcoatRoughness: 0.06, side: THREE.DoubleSide });
+            obj.traverse(o => { if (o.isMesh) { o.material = mat; o.geometry.computeVertexNormals(); } });
+          }
           const wrap = new THREE.Group(); wrap.add(obj); obj = wrap;
         }
       } else if (g.type === 'box') {
@@ -203,8 +234,8 @@ export class SimViewer {
     // gripper finger meshes get their own material instance so they can glow when latched
     this.fingerMats = {};
     for (const b of bodies) {
-      const m = b.name.match(/^(right|left)\/gripper_(left|right)$/);
-      if (!m) continue;
+      const m = b.name.match(/^(right|left)\//);
+      if (!m || !(model.finger_bodies || []).includes(b.name.slice(m[0].length))) continue;
       b.grp.traverse(o => {
         if (o.isMesh) {
           o.material = o.material.clone();
@@ -322,6 +353,14 @@ export class SimViewer {
       line.renderOrder = 10;
       this.overlayRoot.add(line);
       this.trajLines.push(line);
+      const gmat = new LineMaterial({ linewidth: 2.0, vertexColors: true, transparent: true, opacity: 0.28, depthTest: false,
+                                      depthWrite: false, worldUnits: false });
+      gmat.resolution.set(w, h);
+      const ghost = new Line2(geo, gmat);
+      ghost.renderOrder = 9; ghost.visible = false;
+      this.overlayRoot.add(ghost);
+      line.userData.ghost = ghost;
+      (this.trajGhosts ||= []).push(ghost);
       const dot = new THREE.Mesh(new THREE.SphereGeometry(0.009, 20, 12),
         new THREE.MeshBasicMaterial({ color: 0xffd36b, transparent: true, opacity: 0.95, depthTest: false }));
       dot.renderOrder = 11;
@@ -390,7 +429,7 @@ export class SimViewer {
       const line = this.trajLines[si], dot = this.trajDots[si];
       const e = k >= 0 ? this.ro.policy[k].sides[side] : null;
       const show = this.overlays.traj && e && e.traj && e.traj.length > 1;
-      line.visible = !!show; dot.visible = !!show;
+      line.visible = !!show; dot.visible = !!show; line.userData.ghost.visible = !!show;
       if (show && (force || k !== this.lastPolIdx)) {
         const pos = [], col = [];
         const c0 = new THREE.Color(0xff6a00), c1 = new THREE.Color(0xffd36b);
@@ -398,7 +437,7 @@ export class SimViewer {
         line.geometry.setPositions(pos);
         line.geometry.setColors(col);
         line.computeLineDistances();
-        const la = Math.min(this.ro.look_ahead ?? 45, e.traj.length - 1);
+        const la = Math.min(Math.round((this.ro.look_ahead ?? 45) / (e.traj_step || 1)), e.traj.length - 1);
         dot.position.set(...e.traj[la]);
       }
       if (show) {
@@ -408,10 +447,43 @@ export class SimViewer {
       }
       // finger glow when the policy considers the bread latched
       const latched = e ? !!e.grasping : false;
-      for (const m of this.fingerMats[side] || []) m.emissiveIntensity += ((latched ? 0.55 : 0) - m.emissiveIntensity) * 0.25;
+      for (const m of this.fingerMats[side] || []) m.emissiveIntensity += ((latched ? 0.22 : 0) - m.emissiveIntensity) * 0.25;
     });
     this.lastPolIdx = k;
     this.currentPolicy = k;
+  }
+
+  // ------------------------------------------------------------------ live mode
+  beginLive() {
+    this.playing = false; this.frames = null; this.live = true;
+    if (this.ao) this.ao.enabled = false;            // leave the GPU to the policy during live runs
+    this.ro = { kpts: {}, policy: [], policy_period: 0.3, look_ahead: 45 };
+    this.appear = {};
+    this._buildKpts();
+    for (const b of Object.values(this.objectBodies)) b.grp.visible = true;
+  }
+  endLive() { this.live = false; if (this.ao) this.ao.enabled = true; }
+  setLiveKpts(kpts) { this.ro.kpts = kpts; this._buildKpts(); }
+  setLiveState(qpos, entries, t) {
+    if (!this.live) return;
+    this._fk(qpos);
+    for (const b of Object.values(this.objectBodies)) b.grp.visible = true;
+    this.time = t;
+    this.model.sides.forEach((side, si) => {
+      const line = this.trajLines[si], dot = this.trajDots[si], e = entries[side];
+      const show = this.overlays.traj && e && e.traj && e.traj.length > 1;
+      line.visible = !!show; dot.visible = !!show; line.userData.ghost.visible = !!show;
+      if (show && e !== line.userData.entry) {
+        line.userData.entry = e;
+        const pos = [], col = [], c0 = new THREE.Color(0xff6a00), c1 = new THREE.Color(0xffd36b);
+        e.traj.forEach((p, i) => { pos.push(p[0], p[1], p[2]); const c = c0.clone().lerp(c1, i / (e.traj.length - 1)); col.push(c.r, c.g, c.b); });
+        line.geometry.setPositions(pos); line.geometry.setColors(col); line.computeLineDistances();
+        dot.position.set(...e.traj[Math.min(this.ro.look_ahead ?? 45, e.traj.length - 1)]);
+      }
+      if (show) dot.scale.setScalar(0.7 + 0.5 * Math.abs(Math.sin(performance.now() / 200)));
+      for (const m of this.fingerMats[side] || []) m.emissiveIntensity += (((e && e.grasping) ? 0.22 : 0) - m.emissiveIntensity) * 0.25;
+    });
+    this.onLiveTime?.(t, entries);
   }
 
   // ------------------------------------------------------------------ camera
@@ -431,6 +503,11 @@ export class SimViewer {
     this.camTween = { from: this._camState(), to: { pos: new THREE.Vector3(...c.pos), target: new THREE.Vector3(...c.target), fov: 36 },
                       t: instant ? 1 : 0 };
     if (instant) this._applyTween(1);
+  }
+  setCustomView(pos, target) {
+    this.autoOrbit = false;
+    this.camTween = { from: this._camState(), to: { pos: new THREE.Vector3(...pos), target: new THREE.Vector3(...target), fov: 36 }, t: 1 };
+    this._applyTween(1); this.camTween = null;
   }
   _camState() { return { pos: this.camera.position.clone(), target: this.controls.target.clone(), fov: this.camera.fov }; }
   _applyTween(a) {
@@ -461,6 +538,6 @@ export class SimViewer {
       this.setTime(t);
     }
     this.controls.update();
-    this.renderer.render(this.scene, this.camera);
+    if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
   }
 }

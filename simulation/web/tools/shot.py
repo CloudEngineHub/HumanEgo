@@ -11,7 +11,8 @@ from playwright.async_api import async_playwright
 
 async def main(a):
     async with async_playwright() as p:
-        b = await p.chromium.launch(args=["--use-angle=gl", "--ignore-gpu-blocklist", "--enable-gpu", "--no-sandbox"])
+        b = await p.chromium.launch(args=["--use-angle=vulkan", "--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan",
+                                          "--ignore-gpu-blocklist", "--enable-gpu", "--no-sandbox"])
         pg = await b.new_page(viewport={"width": a.width, "height": a.height}, device_scale_factor=a.dpr)
         logs = []
         pg.on("console", lambda m: logs.append(f"[{m.type}] {m.text}"))

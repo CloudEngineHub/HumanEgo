@@ -87,7 +87,8 @@ class ServeBreadSim:
         for s in self.sides:
             self.arms[s] = SimArm(self.m, self.d, s, self.robot,
                                   np.array(self.meta["T_base_in_world"][s]),
-                                  np.array(self.meta["T_base_in_cam"][s]))
+                                  np.array(self.meta["T_base_in_cam"][s]),
+                                  tcp_offset=float(self.cfg.get("control", {}).get("tcp_offset", 0.0)))
 
     # ----------------------------------------------------------------- reset
     def reset(self, scene: Optional[dict] = None, settle: float = 0.4, arm_q: Optional[dict] = None):

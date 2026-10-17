@@ -22,6 +22,7 @@ Run:  python simulation/scripts/build_assets.py
 import json
 import os
 import shutil
+import sys
 
 import numpy as np
 import trimesh
@@ -120,6 +121,11 @@ def _export_glb(mesh, name, tex_paths=None, color=None, roughness=0.8, metallic=
     # glTF is Y-up: rotate back so three.js can use a Z-up parent consistently
     m.apply_transform(np.linalg.inv(YUP_TO_ZUP))
     m.export(os.path.join(WEB, f"{name}.glb"))
+    sys.path.insert(0, SIM)
+    from humanego_sim.glb_tools import jpeg_textures, set_pbr
+    jpeg_textures(os.path.join(WEB, f"{name}.glb"))          # PNG -> 1K JPEG for the web
+    if tex_paths:   # bread is not metal (and JPEG chroma bleeding would leak into the packed metalness channel)
+        set_pbr(os.path.join(WEB, f"{name}.glb"), metallic=0.0, roughness=1.0)
 
 
 # ---------------------------------------------------------------------------

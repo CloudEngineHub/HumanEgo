@@ -38,7 +38,7 @@ class SimController:
         self.grasp_threshold = float(c.get("grasp_threshold", 0.5))
         self.should_grasp_method = c.get("should_grasp_method", "first")
         self.grasp_k = {"first_k": int(c.get("grasp_k_first", 1)), "last_k": int(c.get("grasp_k_last", 1)),
-                        "sum_k": int(c.get("grasp_k_sum", 3))}
+                        "sum_k": int(c.get("grasp_k_sum", 3)), "any_k": int(c.get("grasp_k_any", 50))}
         self.use_safety_cage = bool(c.get("use_safety_cage", True))
         self.max_pos_step = float(c.get("max_pos_step", 0.018))
         self.max_rot_step = float(c.get("max_rot_step", 0.10))
@@ -78,6 +78,8 @@ class SimController:
         m = self.should_grasp_method
         if m == "any":
             return bool(np.any(g > th))
+        if m == "any_first_k":     # grasp intent anywhere in the next k predicted steps (k = horizon == "any")
+            return bool(np.any(g[: max(1, self.grasp_k["any_k"])] > th))
         if m == "average":
             return bool(np.mean(g) > th)
         if m == "last":

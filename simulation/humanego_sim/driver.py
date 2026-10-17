@@ -147,7 +147,7 @@ class SimArm:
 
     def __init__(self, model: mujoco.MjModel, data: mujoco.MjData, side: str, robot: RobotSpec,
                  T_base_in_world: np.ndarray, T_base_in_cam: np.ndarray,
-                 ik_damping: float = 0.02, ik_iters: int = 3):
+                 ik_damping: float = 0.02, ik_iters: int = 3, tcp_offset: float = 0.0):
         self.m, self.d = model, data
         self.side = side
         self.robot = robot
@@ -157,6 +157,10 @@ class SimArm:
         self._T_base_in_cam = np.asarray(T_base_in_cam, dtype=np.float64)
         self.C = np.eye(4)
         self.C[:3, :3] = robot.R_tool_to_ee      # raw tool frame -> corrected EE frame
+        # TCP calibration: shift the EE point along the approach axis (negative = towards the
+        # palm, so the fingers reach further past the commanded pinch point). Real rig: the
+        # tool site itself (t_flange_tool = 0.156 m), i.e. 0.
+        self.C[:3, 3] = robot.R_tool_to_ee @ np.array([0.0, 0.0, float(tcp_offset)])
         self.C_inv = np.linalg.inv(self.C)
         self.ik_damping = ik_damping
         self.ik_iters = ik_iters

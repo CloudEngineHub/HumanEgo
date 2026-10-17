@@ -71,7 +71,9 @@ control:                   # cfg/inference/serve_bread/Control.yaml (real rig)
   alpha_rot: 0.0
   duration_smooth_param: 12.0
   grasp_threshold: 0.6
-  should_grasp_method: any
+  should_grasp_method: any_first_k   # 'any' restricted to the next grasp_k_any steps (50 = original 'any')
+  grasp_k_any: 50
+  tcp_offset: 0.0          # m along the approach axis; 0 = real rig's tool point (t_flange_tool 0.156)
   use_safety_cage: true
   max_pos_step: 0.08
   max_rot_step: 0.02
