@@ -20,7 +20,7 @@ try {
   const data = new mj.MjData(model);
   log(`model nq=${model.nq} nv=${model.nv} nu=${model.nu} timestep=${model.opt.timestep}`);
   const sid = model.site('right/ee_gripper_link').id;
-  const bid = model.body('bread_right').id;
+  const bid = model.body('bread_right_2_1_1').id;   // a corner of the soft bread's grid
   mj.mj_forward(model, data);
   log(`site xpos ${Array.from(data.site_xpos.slice(3 * sid, 3 * sid + 3)).map(v => v.toFixed(3))}`);
   const jacp = new mj.DoubleBuffer(3 * model.nv), jacr = new mj.DoubleBuffer(3 * model.nv);
