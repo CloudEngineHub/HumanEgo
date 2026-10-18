@@ -26,8 +26,9 @@ pip install torch --index-url https://download.pytorch.org/whl/cu128
 pip install -r requirements.txt -r simulation/requirements.txt
 huggingface-cli download Leo-TX/HumanEgo --include "serve_bread/*" --local-dir ./checkpoints
 
-python simulation/scripts/build_assets.py                 # once: procedural bread / plate / table assets
-python simulation/scripts/run_episode.py --video          # one bimanual episode -> simulation/runs/...
+python simulation/scripts/build_assets.py                      # once: procedural bread / plate / table assets
+python simulation/scripts/run_episode.py --video               # real-rig controller (production profile)
+python simulation/scripts/run_episode.py --profile tuned --video   # the shipped tuned controller + grasp skill
 ```
 
 Other rigs are one flag away:
@@ -35,27 +36,72 @@ Other rigs are one flag away:
 ```bash
 python simulation/scripts/fetch_robots.py franka_panda ur5e        # large Menagerie meshes, fetched on demand
 python simulation/scripts/fit_robot_poses.py franka_panda ur5e     # start pose = the real Trossen start pose (IK)
-python simulation/scripts/run_episode.py --robot franka_panda --camera zed2i --video
+python simulation/scripts/run_episode.py --profile tuned --robot franka_panda --camera zed2i --video
 python simulation/scripts/run_episode.py --mode single --set control.alpha=0.3
 ```
 
-Batch success rate over randomized initial conditions (paper protocol):
-
-```bash
-python simulation/scripts/evaluate.py --n 40 --workers 8
-```
-
-The tuned controller and grasp skill for each robot are in `configs/tuned/<robot>.json`
-(parameters plus their held-out score). To compare them with the production settings on
-the same scenes:
-
-```bash
-GA='control.grasp_assist={"enabled": true}'
-python simulation/scripts/compare_params.py --sets production=- tuned=simulation/configs/tuned/trossen_wxai.json --set "$GA"
-python simulation/scripts/compare_params.py --sets tuned=simulation/configs/tuned/ur5e.json --set "$GA" --set robot='"ur5e"' --n 24
-```
-
 Headless rendering uses `MUJOCO_GL=egl` (set automatically).
+
+## Results
+
+Per-arm success = bread released and resting on the plate, on randomized held-out scenes
+(paper protocol, soft bread). Numbers from `configs/tuned/<robot>.json`, written by
+`autotune_validate.py` (this table is generated: `python -m humanego_sim.web_manifest`;
+a test fails when it drifts from the files):
+
+<!-- results:start -->
+| Robot | Controller (`--profile tuned`) | Per arm, seed 7777 | Per arm, seed 8888 | Right / left (7777) | Both served (7777) |
+|---|---|---|---|---|---|
+| Trossen WidowX AI | `soft_v6` + grasp skill | 91% (32 scenes) | 94% (32 scenes) | 94% / 88% | 84% |
+| Franka Panda | `franka_v3` + grasp skill | 62% (24 scenes) | 60% (24 scenes) | 88% / 38% | 33% |
+| UR5e + Robotiq 2F-85 | `ur5e_v3` + grasp skill | 88% (24 scenes) | 81% (24 scenes) | 92% / 83% | 79% |
+<!-- results:end -->
+
+The real rig's production controller (`--profile production`) scores much lower on the same
+scenes; most of the gain comes from the grasp skill and the tuned servo timing. The comparisons
+are in [Grasp skill](#grasp-skill-in-the-low-level-controller) and
+[Self-tuning loop](#self-tuning-loop-autotune). Read rates with their sampling error:
+see [Evaluation protocol](#evaluation-protocol). The interactive page shows the same
+controllers on its own rollouts.
+
+## How it works
+
+1. **Sense.** A virtual camera at the real hand-eye calibration renders RGB-D, cropped like `CamRS`.
+2. **Perceive.** The released perception runs on ground-truth masks (in place of DINO-SAM):
+   keypoints, multi-frame depth lift, PCA object frames; the robot is removed from the image
+   (perfect inpainting) and the virtual gripper drawn, as on the robot.
+3. **Act.** `ICTPolicy` on the released checkpoint predicts a 50-step hand trajectory; one
+   right-hand model drives both arms, the left arm sees a mirrored image.
+4. **Move.** The production controller (temporal ensembling, safety cage, EMA, look-ahead) feeds
+   a Trossen-driver emulator (quintic re-targeting + IK) and MuJoCo, where the bread is a soft
+   flex body held by friction alone.
+
+Settings come in **profiles** (`humanego_sim/profiles.py`, `--profile` on every script):
+`production` is the real rig's `Control.yaml` (the default); `tuned` adds the robot's tuned
+parameters from `configs/tuned/<robot>.json` and the grasp skill. Profiles sit between the
+per-robot calibration and explicit `--set` overrides. Details below:
+[what is simulated](#what-is-simulated-and-how-faithfully), [grasp skill](#grasp-skill-in-the-low-level-controller),
+[Live mode](#live-mode-the-policy-in-your-browser), [web viewer](#web-viewer-web).
+
+## Reproduce
+
+```bash
+# success rate with 95 % intervals (development seeds 7777 / 8888; 9001-9099 are reserved)
+python simulation/scripts/evaluate.py --profile tuned --n 32 --seed 7777 --workers 8
+# production vs tuned on the same scenes, paired test
+python simulation/scripts/compare_params.py --sets production=- tuned=simulation/configs/tuned/trossen_wxai.json \
+    --set 'control.grasp_assist={"enabled": true}' --seed 7777 8888
+python simulation/scripts/evaluate.py --profile tuned --robot ur5e --n 24 --seed 7777
+# the interactive page: build every config, pack, record the videos (never deploys)
+python simulation/scripts/rebuild_site.py --workers 2
+# tests: CPU subset (what CI runs), then the closed-loop smoke episodes (checkpoint + GPU)
+pytest simulation/tests -m "not sim"
+pytest simulation/tests -m sim
+```
+
+Engineering logs of the upgrade rounds (what was tried, measured, kept or reverted):
+[`docs/upgrade/`](docs/upgrade/) — evaluation and robustness ([robust.md](docs/upgrade/robust.md)),
+physics ([physics.md](docs/upgrade/physics.md)), engineering and the website ([eng.md](docs/upgrade/eng.md)).
 
 ## Evaluation protocol
 
@@ -453,16 +499,29 @@ chunk) is near-optimal there, and most failures were grasps, not placing.
 ## Web viewer (`web/`)
 
 ```bash
-python simulation/scripts/export_onnx.py                  # policy for Live mode
-python simulation/scripts/build_web.py --configs trossen_wxai:realsense_d405:bimanual:24,franka_panda:realsense_d405:bimanual:10
-python simulation/web/tools/serve.py 8791 simulation/web   # http://127.0.0.1:8791 (Range requests, like GitHub Pages)
-python simulation/scripts/deploy_web.py ../humanego-ai.github.io/sim
-python simulation/web/tools/record.py http://127.0.0.1:8791/index.html teaser.mp4 --rollout <id> --clean
+python simulation/scripts/export_onnx.py                   # policy for Live mode
+python simulation/scripts/rebuild_site.py --workers 2      # all site configs, each with its profile; pack; videos
+python simulation/scripts/build_web.py --configs ur5e:realsense_d405:bimanual:10:tuned   # one config
+python simulation/web/tools/serve.py 8791 simulation/web --gzip   # http://127.0.0.1:8791, like GitHub Pages
+python simulation/scripts/deploy_web.py ../humanego-ai.github.io/sim --teaser
 ```
 
 The viewer replays recorded `qpos` (30 Hz, interpolated to the display rate) through the
 MuJoCo kinematic tree in three.js, with the policy's predicted 50-step trajectory, the
 perception keypoints riding on the objects, and the exact images the policy saw.
+
+The manifest (`data/manifest.json`, `humanego_sim/web_manifest.py`) is generated: the results
+table counts the page's own rollouts, the held-out numbers and the tuning note come from
+`configs/tuned/*.json`. After a build, `humanego_sim/web_pack.py` packs the site in place:
+rollouts as bit-exact binary tracks (`data/rollouts/<id>.bin`, decoded by `web/js/rollout.js`),
+policy-input videos at crf 30, quantized robot GLBs (KHR_mesh_quantization), WebP textures;
+the soft breads keep float positions because the viewer deforms them on the CPU.
+`deploy_web.py` ships only what the packed site loads.
+
+Tools in `web/tools/`: `record.py` (teaser / robot videos), `measure_load.py` (first-load bytes and
+time in headless Chrome, throttled, phone, without WebGPU, Live mode), `compare_shots.py`
+(screenshot diff of two builds at fixed rollout times), `check_rollouts.py` (packed rollouts
+decode in the browser to their JSON), `shot.py`.
 
 ## Layout
 
@@ -475,12 +534,17 @@ simulation/
     driver.py env.py                SimArm (Trossen-driver behaviour + IK), physics + rendering
     perception.py controller.py     released perception modules, production controller
     runner.py evaluate.py sampling.py   closed loop, parallel evaluation, initial conditions
+    profiles.py                     named config profiles (production | tuned)
     web_export.py live_export.py replay.py glb_tools.py
+    web_manifest.py web_pack.py     generated web manifest; packing for the web
   autotune/                    population search + decision rules + agent inbox
   scripts/                     build_assets, bread_gen, run_episode, evaluate, autotune, grasp_test,
                                diagnose_episode, fetch_robots, fit_robot_poses, export_onnx,
-                               build_web, deploy_web, smoke_test
-  web/                         index.html, css/, js/ (viewer.js, app.js, live/), tools/
+                               build_web, rebuild_site, deploy_web, smoke_test
+  configs/tuned/<robot>.json   shipped tuned controller + held-out scores (--profile tuned)
+  tests/                       pytest suite (CPU subset in CI: .github/workflows/sim-tests.yml)
+  docs/upgrade/                engineering logs of the upgrade rounds
+  web/                         index.html, css/, js/ (viewer.js, app.js, rollout.js, live/), tools/
 ```
 
 ## Credits

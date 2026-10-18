@@ -184,3 +184,26 @@ def validate(man: dict, web: Optional[str] = None) -> List[str]:
         if web and isinstance(v, str):
             need(os.path.exists(os.path.join(web, v)), f"media {k}: {v} missing")
     return err
+
+
+def readme_results() -> str:
+    """The README's results table, from configs/tuned/*.json (tests/test_web_build.py keeps the README
+    in sync: python -m humanego_sim.web_manifest prints it)."""
+    from .profiles import TUNED_DIR
+    from .robots import ROBOTS
+    rows = ["| Robot | Controller (`--profile tuned`) | Per arm, seed 7777 | Per arm, seed 8888 | Right / left (7777) | Both served (7777) |",
+            "|---|---|---|---|---|---|"]
+    for robot in ROBOTS:
+        p = os.path.join(TUNED_DIR, f"{robot}.json")
+        if not os.path.exists(p):
+            continue
+        t = json.load(open(p))
+        h, h2 = t["held_out"], t.get("held_out_2")
+        rows.append(f"| {ROBOTS[robot].label} | `{t['autotune_run']}` + grasp skill | {pct(h['per_arm'])} ({h['n_scenes']} scenes) | "
+                    + (f"{pct(h2['per_arm'])} ({h2['n_scenes']} scenes)" if h2 else "—")
+                    + f" | {pct(h['per_side'].get('right'))} / {pct(h['per_side'].get('left'))} | {pct(h['both'])} |")
+    return "\n".join(rows)
+
+
+if __name__ == "__main__":
+    print(readme_results())

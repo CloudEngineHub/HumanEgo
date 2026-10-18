@@ -11,9 +11,10 @@ import json
 
 from playwright.async_api import async_playwright
 
-JS = """async () => {
-  const { decodeRollout } = await import('./js/rollout.js');
-  const man = await (await fetch('data/manifest.json')).json();
+JS = """async (base) => {
+  const { decodeRollout } = await import(new URL('js/rollout.js', base).href);
+  const get = (p) => fetch(new URL(p, base).href);
+  const man = await (await get('data/manifest.json')).json();
   const plain = (x) => (ArrayBuffer.isView(x) ? Array.from(x) : Array.isArray(x) ? x.map(plain)
                        : (x && typeof x === 'object') ? Object.fromEntries(Object.entries(x).map(([k, v]) => [k, plain(v)])) : x);
   const diff = (a, b, path) => {
@@ -34,8 +35,8 @@ JS = """async () => {
   const out = { n: 0, ok: 0, bad: [], decode_ms: 0, parse_ms: 0, bin_bytes: 0, json_bytes: 0 };
   for (const c of man.configs) for (const r of c.rollouts) {
     if (r.fmt !== 'bin') continue;
-    const bin = await (await fetch(`data/rollouts/${r.id}.bin`)).arrayBuffer();
-    const txt = await (await fetch(`data/rollouts/${r.id}.json`)).text();
+    const bin = await (await get(`data/rollouts/${r.id}.bin`)).arrayBuffer();
+    const txt = await (await get(`data/rollouts/${r.id}.json`)).text();
     let t0 = performance.now(); const a = plain(decodeRollout(bin)); out.decode_ms += performance.now() - t0;
     t0 = performance.now(); const b = JSON.parse(txt); out.parse_ms += performance.now() - t0;
     out.n++; out.bin_bytes += bin.byteLength; out.json_bytes += txt.length;
@@ -50,8 +51,9 @@ async def main(url):
     async with async_playwright() as p:
         b = await p.chromium.launch(args=["--no-sandbox"])
         pg = await b.new_page()
-        await pg.goto(url + "?t=0", wait_until="domcontentloaded")
-        res = await pg.evaluate(JS)
+        base = url.rsplit("/", 1)[0] + "/"
+        await pg.goto(base + "css/style.css")          # a same-origin document without the 3D viewer
+        res = await pg.evaluate(JS, base)
         await b.close()
     print(json.dumps(res, indent=1))
     return res

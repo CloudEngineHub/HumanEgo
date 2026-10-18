@@ -238,3 +238,10 @@ def test_deploy_plan_ships_only_what_the_site_loads(tmp_path, monkeypatch):
     assert not any(f.endswith((".json", ".packed")) and "/rollouts/" in f for f in files)
     assert sum(f.endswith(".bin") for f in files) == 4 and "data/rollouts/stale_999.bin" not in files
     assert not any(f.startswith("tools/") for f in files)
+
+
+def test_readme_results_table_is_generated():
+    """README 'Results' == configs/tuned/*.json (regenerate: python -m humanego_sim.web_manifest)."""
+    readme = open(os.path.join(SIM, "README.md")).read()
+    block = readme.split("<!-- results:start -->\n", 1)[1].split("\n<!-- results:end -->", 1)[0]
+    assert block == web_manifest.readme_results()
