@@ -1,47 +1,47 @@
 {
  "robot": "trossen_wxai",
- "autotune_run": "soft_v6",
- "chosen": "batch0_0.914",
+ "autotune_run": "trossen_v7",
+ "chosen": "batch4_0.847",
  "requires": {
   "control.grasp_assist.enabled": true
  },
  "held_out": {
   "n_scenes": 32,
   "seed": 7777,
-  "per_arm": 0.906,
+  "per_arm": 0.828,
   "per_side": {
-   "right": 0.938,
-   "left": 0.875
+   "right": 0.969,
+   "left": 0.688
   },
-  "both": 0.844
+  "both": 0.656
  },
- "params": {
-  "control.grasp_assist.lateral_gain": 0.728981723808762,
-  "control.grasp_assist.along_max": 0.03762233681604595,
-  "control.grasp_assist.height_max": -0.006,
-  "control.grasp_assist.arrive_tol": 0.0060151312907027014,
-  "control.grasp_assist.close_hold": 0.6904829129774759,
-  "control.grasp_assist.q_empty": 0.1507121779829087,
-  "control.grasp_assist.regrasp_max": 2,
-  "control.grasp_assist.retry_lower": 0.0026793719062265815,
-  "control.grasp_assist.retry_inward": 0.01392868968679768,
-  "control.alpha": 0.17517882899671153,
-  "control.duration_smooth_param": 2.0,
-  "control.tcp_offset": -0.00214150938296636,
-  "control.tool_pitch_deg": -10.0,
-  "control.grasp_threshold": 0.6474502907426785,
-  "control.idle_dist_threshold": 0.08345024627967582,
-  "control.idle_time_limit": 2.6519472206454893
- },
- "note": "soft_v6 parameters with the pinch capped 0.6 cm below the bread centre (height_max, set by hand after the left-arm audit; centre height = half the perceived top height)",
  "held_out_2": {
   "n_scenes": 32,
   "seed": 8888,
-  "per_arm": 0.938,
+  "per_arm": 0.891,
   "per_side": {
-   "right": 0.938,
-   "left": 0.938
+   "right": 0.875,
+   "left": 0.906
   },
-  "both": 0.906
- }
+  "both": 0.781
+ },
+ "params": {
+  "control.grasp_assist.lateral_gain": 0.8806534770142709,
+  "control.grasp_assist.along_max": 0.028582009769294252,
+  "control.grasp_assist.height_max": -0.007682724996828417,
+  "control.grasp_assist.arrive_tol": 0.002683469845980511,
+  "control.grasp_assist.close_hold": 0.5437369333251982,
+  "control.grasp_assist.q_empty": 0.2723922040397474,
+  "control.grasp_assist.regrasp_max": 2,
+  "control.grasp_assist.retry_lower": 0.0027253662713262513,
+  "control.grasp_assist.retry_inward": 0.017952159730798112,
+  "control.alpha": 0.292446437870574,
+  "control.duration_smooth_param": 4.850507925135888,
+  "control.tcp_offset": 0.014015279098702677,
+  "control.tool_pitch_deg": -10.34459271536332,
+  "control.grasp_threshold": 0.6690681837704568,
+  "control.idle_dist_threshold": 0.07643570002164041,
+  "control.idle_time_limit": 2.9055531946577107
+ },
+ "note": "Controller-only re-tune (autotune trossen_v7) on physics v2 at the measured table height (rig.cam_height 0.366) and the 14.5 cm croissant, starting from the soft_v6 + height_max settings. The previous settings score 0.719 / 0.656 per arm on the same scenes (seeds 7777 / 8888); paired on 8888: +23 pts, McNemar p = 0.0015."
 }
