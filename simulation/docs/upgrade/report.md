@@ -158,7 +158,14 @@ Further proposed values are in `docs/proposed_scene.json`.
 - **Gripper command values:** the sim's Trossen gripper closes to −2 mm, the real driver to 0. This
   was left unchanged.
 - **Release behaviour:** the real robot sets the bread down before releasing; the sim releases
-  from 5–8 cm (`docs/real_vs_sim.md` §2).
+  from about 8 cm (`docs/real_vs_sim.md` §2).
+  - Checked against the real code on 2026-10-18: the release triggers, the tool point and the
+    idle-done rule are the same in the sim and on the real robot.
+  - The "real grasp flag never fires" explanation is refuted: with the real rule alone the sim
+    never latches the bread and success collapses to 6–11 %, while the real robot serves 95 %.
+  - The wrap-up timing now follows the real code (no measurable effect).
+  - The remaining difference is where the hand enters the 13 cm idle-done radius. That needs
+    a real log (E0–E2).
 
 ## Real experiments that would settle the open questions
 

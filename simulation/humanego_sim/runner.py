@@ -102,9 +102,10 @@ class EpisodeRunner:
         self.forced_lift_ramp = max(1, int(cc.get("forced_lift_ramp_frames", 5)))
         self.latch_dist = float(cfg.get("perception", {}).get("latch_dist_thresh", 0.20))
         # How the gripper reading becomes the ICT grasp flag. The real loop uses
-        # measured gq < 0.5; soft bread squashes so that also fires on a held bread.
-        # Rigid sim bread cannot squash, so "measured_or_stalled" also counts a gripper
-        # that finished closing and stalled on an object (see README, "Grasp state").
+        # measured gq < 0.5: the real fingers pinch the bread's end flat, so it fires on a
+        # held bread. The sim crumb does not squash that far, so "measured_or_stalled" also
+        # counts a gripper that finished closing and stalled on an object; "measured" alone
+        # never latches the bread (success 52 -> 6 %; README, "Grasp state").
         self.grasp_source = cc.get("grasp_state_source", "measured_or_stalled")
         # parity trace (scripts/parity_test.py): when a dict, run() records the physics state at t = 0
         # and at every control tick, the perception, every policy call and every controller command
@@ -514,19 +515,24 @@ class EpisodeRunner:
                             ctx.wrap_phase = "settle"            # hold still a moment before opening
                         if ctx.wrap_phase is None:
                             ctx.wrap_phase = "open"
-                            arm.open_gripper(goal_time=float(rel.get("open_time", 0.5)))
+                            arm.open_gripper(goal_time=float(rel.get("open_time", 1.0)))
                         if verbose:
                             print(f"[sim] {s} done ({ctx.done_reason}) at t={t:.1f}s -> open + home")
             # ---- wrap-up sequencing (open -> home) ----
             for s, ctx in ctxs.items():
                 rel = cc.get("release", {}) or {}
-                open_t = float(rel.get("open_time", 0.5))      # release: gripper opening time (gentler if longer)
+                # Real wrap-up (AriaMimic inference/Inference.py, RobotArmTrossen.open_gripper(goal_time=1.0)):
+                # two arms (_wrap_up_side) halt, open blocking, then go_home(3.0); one arm (run) opens
+                # non-blocking, sleeps 0.5 s and starts go_home while the gripper is still opening.
+                open_t = float(rel.get("open_time", 1.0))
+                home_after = rel.get("home_after")
+                home_after = float(home_after) if home_after is not None else (open_t if len(ctxs) > 1 else 0.5)
                 if (ctx.wrap_phase == "place" and t - ctx.wrap_t0 >= float(rel.get("place_time", 0.9)) + 0.15
                         + float(rel.get("settle", 0.0))) or (ctx.wrap_phase == "settle" and t - ctx.wrap_t0 >= float(rel.get("settle", 0.0))):
                     ctx.wrap_phase = "open"
                     ctx.wrap_t0 = t
                     env.arms[s].open_gripper(goal_time=open_t)
-                elif ctx.wrap_phase == "open" and t - ctx.wrap_t0 >= max(0.8, open_t + 0.3):
+                elif ctx.wrap_phase == "open" and t - ctx.wrap_t0 >= home_after:
                     ctx.wrap_t0 = t
                     d_back = float(rel.get("retreat", 0.0))
                     d_up = float(rel.get("lift", 0.0))

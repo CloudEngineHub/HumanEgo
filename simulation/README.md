@@ -211,7 +211,18 @@ Notes on the modelling choices (all in `configs/serve_bread.yaml`):
   breads that lie fully on the plate's rim zone; it is still reported as `success_strict`.
 * **Grasp state.** The real loop flags a grasp when the measured gripper opening drops
   below 50 %; in simulation a gripper that has finished closing and stalled on the bread
-  also counts (`control.grasp_state_source`).
+  also counts (`control.grasp_state_source`). The stall rule stands in for squash the sim
+  bread does not reproduce: the real fingers pinch the bread's end flat (real video), while
+  the sim crumb under the Trossen's 4–8 N stays above 50 % opening. With the real rule alone
+  (`grasp_state_source: measured`) the flag never fires, the bread is never latched to the
+  hand, and success collapses (Trossen dev seed 7777: production 52 → 6 %, tuned 80 → 11 %
+  per arm). The real robot's 95 % means its flag does fire.
+* **Release.** The wrap-up follows the real code: two arms halt, open over 1.0 s (blocking)
+  and then go home (`Inference._wrap_up_side`); one arm opens non-blocking and starts home
+  after 0.5 s (`Inference.run`). `control.release.open_time` / `home_after` override it. The
+  earlier 0.5 s open with home after 0.8 s scored the same (dev seeds, paired: production
+  47 vs 46 %, tuned 86 vs 88 %, single arm 55 vs 55 %). The release height still differs from
+  the real video: see `docs/real_vs_sim.md` §2.
 
 ### Why grasps land above the bread's centre
 

@@ -149,11 +149,25 @@ Sim runs are logged in `runs/real_dev7777/{production,tuned}`; metrics come from
    * Every sim release is idle-done, about 13 cm from the plate pose. The real robot lowers the bread onto the plate first.
    * The danish bouncing off the croissant, a failure the physics session tuned crumb damping for, may therefore be a sim artefact.
    * Hypothesis: with a thick bread the real 50 % opening flag never fires. Then neither idle-done nor latching runs, and the release comes from the policy or the operator, after the policy's own place motion.
-   * The sim's "stalled closed" grasp rule would then hide this. The real log's `done_reason` and `g_pos` settle it.
+   * **Checked 2026-10-18, hypothesis refuted.**
+     * The real release triggers are idle-done (`Inference.py:1106-1115`: grasp flag on for ≥ `idle_time_limit`, tool point within `idle_dist_threshold` of the plate, obj2), the policy done head (`:1166-1172`, > 0.99 and `done_requires_grasp`), and the operator keys `[` / `]` (`:1954-1966`). The grasp flag is `gq < 0.5` of the measured gripper position over 0.045 m (`:1272-1274` single arm, the same in `run_bimanual`; `RobotArmTrossen.get_gripper_q`).
+     * The real tool point is 0.156 m past the flange (`cfg/inference/serve_bread/RobotArmTrossen*.yaml: t_flange_tool`), the same as the sim's `ee_gripper_link` site. The sim's idle-done code is the same rule (`runner.py`).
+     * The flag must fire on the real robot. Latching (the bread's keypoints following the hand) starts only on it. With the real rule alone in the sim (`grasp_state_source: measured`), the flag never fires, and success drops from 52 to 6 % (production) and from 80 to 11 % (tuned) per arm on dev seed 7777. The real robot serves 95 %. The real video also shows the danish's end pinched flat in the fingers (A, k80).
+     * So the sim's "stalled closed" rule stands in for squash that the sim crumb does not reproduce. It is not hiding a real behaviour.
+   * **What the sim does instead.**
+     * Every sim release is idle-done, with the tool point about 14 cm above the table: the hand comes in from above, and the rule fires about 12 cm over the perceived plate centre. The bread's bottom is then 8.3 cm above the plate floor (median, production, 33 served arms).
+     * With idle-done off, the policy's done head never passes 0.99, so production times out on every arm. The tuned controller then lowers the bread onto the plate by itself (0.1 cm at the timeout release, 48 % per arm). The policy does set the bread down; idle-done cuts it short.
+     * A slower policy loop does not explain the video: 0.3 / 0.6 / 0.9 s gives 8.3 / 8.0 / 7.2 cm.
+   * **Still open (needs a real log).** The real robot entered the 13 cm radius later in its place motion than the sim does. The candidates:
+     * a lower approach by the real policy;
+     * a lower perceived plate pose (the glossy plate's D405 depth);
+     * operator releases.
+     The SimLogger branch records `done_reason`, the tool point, the perceived plate pose and `loop_dt`; E0–E2 settle it.
+   * **Wrap-up timing now follows the real code** (`_wrap_up_side`: halt, open 1.0 s blocking, home; `run`: open non-blocking, home after 0.5 s). Before, the sim opened in 0.5 s and went home after 0.8 s. No measurable effect on dev seeds (paired: 47 vs 46 %, 86 vs 88 %, single 55 vs 55 %).
 3. **Grasp point.** End grasps on the real robot vs off-centre grasps in the sim; this interacts with 1 and 2 (a thinner, softer end squashes past 50 %).
 4. **Tuned-controller realism.** Its motion is faster, higher and jerkier than the real robot's, so the 92 % per arm says little about the real robot. The autotune score should penalise jerk and lift height (`sim_phases.py` has speed peaks, LDLJ and lift).
 5. **Reach speed** (production too slow). Candidates: the policy-loop period (sim 0.3 s; real unknown, now logged as `loop_dt`) and the table height.
-6. **Minor.** D405 intrinsics (nominal in sim); wrap-up timing; the start pose (paper "arbitrary" vs fixed); the paper's wider offset range than `sampling.py` single.
+6. **Minor.** D405 intrinsics (nominal in sim); the start pose (paper "arbitrary" vs fixed); the paper's wider offset range than `sampling.py` single.
 
 ## 3. Initial conditions and objects
 

@@ -157,7 +157,7 @@ Python + JS). Final parity (Trossen scene 1, new scene defaults, every option on
 | grip checks | `grip_check` q / touch / effort, `touch_min`, `one_pad_empty`, `effort_empty`, `slip_drop`, `slip_time`, `empty_time` | `effort` = what trossen_arm / the 2F-85 current report; `touch` = finger-pad force, a sensor the real grippers do NOT have |
 | wrist yaw | `yaw` off / align / fit, `yaw_max_deg`, `yaw_margin`, `arrive_rot_deg`, `robots.max_opening` | fingers across the bread's short axis; in the browser "fit" needs `grasp_assist.max_opening` in the config (the live spec has no robot opening) |
 | slow final approach | `slow_dist`, `slow_speed` | |
-| release timing | `release.open_time`, `release.settle` | not measured |
+| release timing | `release.open_time`, `release.home_after`, `release.settle` | defaults now follow the real wrap-up (open 1.0 s; two arms home once open, one arm after 0.5 s); old timing scored the same (2026-10-18) |
 
 Real-gripper sensing (sourced): Trossen reports finger position and motor effort (N); the 2F-85 object
 detection (gOBJ), position and current; the Franka Hand width and `is_grasped` (no force). In the sim,
