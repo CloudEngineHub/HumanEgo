@@ -25,11 +25,11 @@ class CartInterp {
   reset(T0) {
     this.p = M.getP(T0); this.v = [0, 0, 0]; this.a = [0, 0, 0];
     this.R = M.getR(T0); this.w = [0, 0, 0]; this.al = [0, 0, 0];
-    this.active = false; this.Rg = this.R.slice();
+    this.active = false; this.Rg = this.R.slice(); this.pGoal = this.p.slice();
   }
   setGoal(Tg, dur, t) {
     dur = Math.max(dur, 1e-3);
-    this.Rg = M.getR(Tg);
+    this.Rg = M.getR(Tg); this.pGoal = M.getP(Tg);
     const RgT = M.T3(this.Rg);
     const r0 = M.matToRotvec(M.mul3(RgT, this.R));
     this.Cp = quinticCoeffs(this.p, this.v, this.a, M.getP(Tg), dur);

@@ -106,11 +106,33 @@ class EpisodeRunner:
         # Rigid sim bread cannot squash, so "measured_or_stalled" also counts a gripper
         # that finished closing and stalled on an object (see README, "Grasp state").
         self.grasp_source = cc.get("grasp_state_source", "measured_or_stalled")
+        # parity trace (scripts/parity_test.py): when a dict, run() records the physics state at t = 0
+        # and at every control tick, the perception, every policy call and every controller command
+        self.trace: Optional[dict] = None
 
     # ------------------------------------------------------------------
     def _seed_policy_noise(self, seed: int):
         g = torch.Generator(device="cpu").manual_seed(int(seed))
         self.policy.noise = torch.randn(self.policy.noise.shape, generator=g).to(self.policy.noise.device)
+
+    def _phys_state(self) -> dict:
+        d = self.env.d
+        return {k: getattr(d, k).astype(float).tolist() for k in ("qpos", "qvel", "act", "qacc_warmstart")}
+
+    def _trace_tick(self, controller, ctxs, t: float):
+        """After a controller tick: what every arm was commanded, and where the breads are."""
+        env, out = self.env, {"t": round(t, 6), "sides": {}}
+        for s, arm in env.arms.items():
+            gs = controller.gs[s]
+            lc = controller.last_cmd[s]
+            out["sides"][s] = {
+                "cmd": None if lc is None else np.asarray(lc, float).tolist(),
+                "ee": arm.get_p_in_cam().tolist(), "g_to": float(arm._g_to), "g_cmd": float(arm.g_cmd),
+                "skill": gs["state"], "tries": int(gs["tries"]), "wrap": ctxs[s].wrap_phase if s in ctxs else None,
+                "grasping": bool(ctxs[s].hand["is_grasping"]) if s in ctxs else False,
+                "n_events": len(controller.events[s]), "bread": env.object_pos(f"bread_{s}").tolist(),
+                "goal": arm.cinterp.p_goal.tolist(), "mode": arm.mode}
+        return out
 
     def _grasp_val(self, arm) -> float:
         if self.grasp_source == "commanded":
@@ -227,6 +249,18 @@ class EpisodeRunner:
         a_uv = pol.compute_anchor_uv(ObjectState(so.dynamic_obj_poses.get(self.anchor_key, so.T_anchor_in_cam_static)),
                                      active_K, env.W, env.H)
         traj, done_prob = pol.infer(x_rgb, x_ict, mask, a_uv)
+        if self.trace is not None:
+            p_, o_, g_ = traj[hs]
+            self.trace["policy"].append({
+                "t": round(t, 6), "side": ctx.side, "gv": gv, "Tv": np.asarray(Tv, float).tolist(),
+                "ict": x_ict.detach().cpu().numpy().ravel().astype(float).tolist(),
+                "uv": None if a_uv is None else a_uv.detach().cpu().numpy().ravel().astype(float).tolist(),
+                "pos": np.asarray(p_, float).tolist(), "o6d": np.asarray(o_, float).tolist(),
+                "grasp": np.asarray(g_, float).ravel().tolist(), "done": float(done_prob),
+                "latched": st["latched_obj"], "lift": int(ctx.forced_lift_counter),
+                "mask": mask.detach().cpu().numpy().ravel().astype(float).tolist()})
+            if sum(r["side"] == ctx.side for r in self.trace["policy"]) <= 2:     # the first images, for the browser
+                self.trace["policy"][-1]["img"] = (x_rgb[0] * 255).round().byte().cpu().numpy().ravel().tolist()
         ctx.pred_done_prob = done_prob
         if done_prob > float(self.cc.get("done_threshold", 0.8)):
             if not self.cc.get("done_requires_grasp", False) or st["has_ever_grasped"]:
@@ -302,7 +336,19 @@ class EpisodeRunner:
         self.perception = SimPerception(env, split_x_ratio=float(cc.get("split_x_ratio", 0.5)),
                                         n_init_frames=int(self.cfg.get("perception", {}).get("n_init_frames", 10)),
                                         depth_noise=bool(self.cfg.get("perception", {}).get("depth_noise", True)))
+        tr = self.trace
+        self._prev_state = None
+        if tr is not None:
+            tr.update(init_state=self._phys_state(), policy=[], ticks=[], pre=[],
+                      noise=self.policy.noise.detach().cpu().numpy().reshape(-1).astype(float).tolist())
         side_objs = self.perception.estimate_objects(sides, shared_context=True)
+        if tr is not None:
+            tr["perception"] = {s: {"meta": {k: {"T_static": np.asarray(v["T_obj_in_cam_static"], float).tolist(),
+                                                 "kpts_local": np.asarray(v["kpts_local"], float).tolist()}
+                                             for k, v in so.objs_meta.items()},
+                                    "dynamic": {k: np.asarray(v, float).tolist() for k, v in so.dynamic_obj_poses.items()},
+                                    "T_anchor_static": np.asarray(so.T_anchor_in_cam_static, float).tolist()}
+                                for s, so in side_objs.items()}
         ctxs = {s: SideCtx(side=s, is_flip=(s == "left"), objs=side_objs[s]) for s in sides}
         ctxs["right"].is_active = True
         controller = SimController(env.arms, cc)
@@ -311,6 +357,8 @@ class EpisodeRunner:
             if geoms[s].get("bread"):
                 controller.set_geometry(s, geoms[s]["bread"], env.T_cam_in_world)
         self._controller = controller
+        if tr is not None:
+            tr["geoms"] = geoms
         start_delay = float(cc.get("bimanual_start_delay", 6.0))
 
         P = float(cc.get("policy_period", 0.3))
@@ -331,6 +379,12 @@ class EpisodeRunner:
 
         while env.t < T_max:
             t = env.t
+            if tr is not None and t >= next_ctl - 1e-9:
+                # state before the last physics step + the controls it ran with: replaying that one step
+                # reproduces the state this tick (and a re-plan) sees, including the kinematics (site / body
+                # poses), which mj_step leaves at the pre-step positions
+                tr["pre"].append(dict(self._prev_state, ctrl=env.d.ctrl.astype(float).tolist())
+                                 if getattr(self, "_prev_state", None) else None)
             # ---- deliver the previous inference, then observe again ----
             if t >= next_pol - 1e-9:
                 if pending is not None:
@@ -430,6 +484,10 @@ class EpisodeRunner:
             if t >= next_ctl - 1e-9:
                 controller.tick()
                 next_ctl += Tc
+                if tr is not None:
+                    tr["ticks"].append(self._trace_tick(controller, ctxs, t))
+            if tr is not None:
+                self._prev_state = self._phys_state()
             # ---- record ----
             if t >= next_rec - 1e-9:
                 snap = env.snapshot()

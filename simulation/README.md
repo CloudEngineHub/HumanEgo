@@ -321,6 +321,41 @@ left arm 50–71 % instead of 67–88 %); lifting the open hand without placing 
 The simulation advances in lock-step with the network (it pauses while a re-plan is
 computed), so behaviour does not depend on how fast your machine is.
 
+### Python ↔ browser parity (`scripts/parity_test.py`)
+
+```bash
+python simulation/scripts/parity_test.py --robot ur5e --seed 7777 --scene 0 --modes sync free full
+```
+
+runs one scene (depth noise off) through the Python stack with a trace on, then runs the browser
+stack in headless Chrome (Playwright, MuJoCo WASM, WebGPU) from the same physics state with the same
+flow-ODE initial noise, and compares, per control tick, the EE targets, the driver goals, the gripper
+commands, the grasp-skill state and events, the release phase and the bread poses, plus the ICT, anchor uv
+and grasp flag of every re-plan. It reports the first divergence and the max errors
+(`runs/parity/<name>/report.json`). Modes:
+
+* `sync`: Python's perception and policy outputs, physics re-synced to Python's before every control
+  tick. Isolates the ported logic (`runner.js`, `controller.js`, `driver.js`).
+* `free`: the same, with free-running WASM physics.
+* `full`: the browser on its own: perception from the three.js renders, the ONNX policy.
+
+Seed 7777, scene 0, tuned settings with the grasp skill:
+
+| | Trossen | UR5e (place-down release) | Franka |
+|---|---|---|---|
+| `sync`: EE targets / driver goals / ICT, max difference | 0.000 mm / 0.000 mm / 1e-6 | 0.000 mm / 0.002 mm / 1e-6 | 0.000 mm / 0.000 mm / 1e-6 |
+| `sync`: gripper, skill, release, latching mismatches | none | none | none |
+| `sync`: WASM vs native physics, one 0.1 s tick (bread / EE) | 0.005 / 0.002 mm | 0.07 / 0.01 mm | 0.005 / 0.0001 mm |
+| `free`: first divergence | left bread dropped on the plate, t = 20 s (12 mm) | none (bread ≤ 0.2 mm) | left bread dropped, t = 22 s (5 mm) |
+| `free`: outcome Python / browser | ✓✓ / ✓✓ | ✓✓ / ✓✓ | ✓✗ / ✓✗ |
+
+The commands are identical in both modes; the physics drifts by micrometres per tick until a bread is
+dropped (contact chaos), with the same outcome. In `full` mode (Trossen) the browser's perception
+agrees with Python's to 0.3 mm (bread centre), 0.2° (long axis) and 0.8 mm (plate), and the ONNX graph
+matches `ICTPolicy.infer` to 6e-7 on identical inputs, but the policy-input images differ (PSNR 21 dB:
+the viewer's studio backdrop and the table texture's mapping differ from MuJoCo's render), so the
+re-plans and the trajectories differ from t = 0.9 s on (same outcome on this scene).
+
 ## Self-tuning loop (`autotune/`)
 
 An agent-in-the-loop population search over simulator and low-level controller

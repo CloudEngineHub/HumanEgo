@@ -19,7 +19,9 @@ export class LiveEpisode {
   }
 
   // ---------------------------------------------------------------- reset
-  reset(scene, seed = 0) {
+  /** `init` (parity test): {state: {qpos, qvel, act, qacc_warmstart} at t = 0, objs: perception per side} replaces the
+   *  drop-in + settle and the rendered perception with the Python run's. */
+  reset(scene, seed = 0, init = null) {
     const { mj, model, data, spec } = this;
     mj.mj_resetData(model, data);
     this.rng = M.makeRng(seed + 1);
@@ -51,6 +53,18 @@ export class LiveEpisode {
     this.phase = 'settle';
     this.done = false;
     this.entries = {};
+    if (init?.state) {
+      this.loadState(init.state);
+      this._startPolicy(init.objs || null);
+    }
+  }
+
+  /** Overwrite the physics state (parity test: start from, or re-sync to, the Python run). With `st.ctrl` the state
+   *  is the one before the last physics step and that step is replayed, so the kinematics match too. */
+  loadState(st) {
+    const d = this.data;
+    for (const k of ['qpos', 'qvel', 'act', 'qacc_warmstart']) if (st[k] && d[k]) d[k].set(st[k]);
+    if (st.ctrl) { d.ctrl.set(st.ctrl); this.mj.mj_step(this.model, d); } else this.mj.mj_forward(this.model, d);
   }
 
   _step() {
@@ -64,9 +78,11 @@ export class LiveEpisode {
   }
 
   // ---------------------------------------------------------------- perception (t = 0)
-  _startPolicy() {
+  _startPolicy(objs = null) {
     const c = this.cc, sp = this.spec;
-    this.objs = this.cam.estimateObjects(this.sides, this.objNames, this.rng, sp.camera.depth_noise, sp.perception?.n_init_frames ?? 10);
+    if (!objs) this.cam.syncScene?.(this.data.qpos);
+    this.objs = objs || this.cam.estimateObjects(this.sides, this.objNames, this.rng, (sp.perception?.depth_noise ?? true) ? sp.camera.depth_noise : null,
+                                                 sp.perception?.n_init_frames ?? 10);
     this.ctx = {};
     for (const s of this.sides) this.ctx[s] = { side: s, flip: s === 'left', o: this.objs[s], active: s === 'right',
       hand: { grasping: false, latched: null, lock: null, released: false, ever: false }, done: false, wrap: null, wrapT: 0,
@@ -150,8 +166,9 @@ export class LiveEpisode {
     const K = this.cam.K, aK = ctx.flip ? [K[0], 0, 640 - K[2], 0, K[4], K[5], 0, 0, 1] : K;
     const uv = pol.anchorUV(ctx.o.dynamic.obj1, aK, 640, 480);
     tt = performance.now();
-    const out = await pol.infer(img.chw, ict, uv);
+    const out = await pol.infer(img.chw, ict, uv, ctx.side, this.t);
     this.stats.infer += performance.now() - tt; this.stats.plans++;
+    this.hooks?.policy?.(ctx, { t: this.t, gv, Tv, ict, uv, out });
     if (out.done > (c.done_threshold ?? 0.8) && (!c.done_requires_grasp || st.ever)) { ctx.done = true; ctx.doneReason = 'policy_done'; }
     // decode -> camera-frame EE targets (+ forced lift), mirrored back for the left arm
     const he = Math.min(c.exec_horizon ?? pol.K, pol.K), raw = [], world = [];
@@ -173,6 +190,7 @@ export class LiveEpisode {
     if (this.pending) { this.ctl.updateTarget(...this.pending); this.pending = null; }
     if (this.sides.length > 1 && !this.ctx.left.active && this.t >= (this.cc.bimanual_start_delay ?? 6)) this.ctx.left.active = true;
     let tt = performance.now();
+    this.cam.syncScene?.(this.data.qpos);
     const clean = this.cam.cleanImage();
     this.stats.render += performance.now() - tt;
     const tr = {}, gr = {};
@@ -207,6 +225,8 @@ export class LiveEpisode {
         if (this.t >= 0.6) this._startPolicy();
         continue;
       }
+      const ctlDue = this.t >= this.nextCtl - 1e-9;
+      if (ctlDue && this._preT !== this.nextCtl) { this._preT = this.nextCtl; this.hooks?.preTick?.(this); }
       if (this.t >= this.nextPol - 1e-9) { await this._policyTick(); continue; }
       for (const [s, ctx] of Object.entries(this.ctx)) {
         const rel = this.cc.release || {}, a = this.arms[s];
@@ -219,7 +239,7 @@ export class LiveEpisode {
         } else if (ctx.wrap === 'retreat' && this.t - ctx.wrapT >= 0.9) { ctx.wrap = 'home'; ctx.wrapT = this.t; a.goHome(3); }
         else if (ctx.wrap === 'home' && this.t - ctx.wrapT >= 3.1) ctx.wrap = 'finished';
       }
-      if (this.t >= this.nextCtl - 1e-9) { this.ctl.tick(); this.nextCtl += this.Tc; }
+      if (ctlDue) { const tc = this.t; this.ctl.tick(); this.nextCtl += this.Tc; this.hooks?.postTick?.(this, tc); }
       this._step();
       if (Object.values(this.ctx).every((c) => c.wrap === 'finished') || this.t > (this.cc.max_episode_time ?? 40)) {
         this.done = true; this.onDone?.(this.evaluate());

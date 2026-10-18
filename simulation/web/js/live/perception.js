@@ -206,6 +206,10 @@ export class PolicyCamera {
     this.sctx = this.small.getContext('2d', { willReadFrequently: true });
   }
 
+  /** Pose the three.js scene at the current physics state before rendering: the viewer itself is only
+   *  updated once per animation frame, which can be several control ticks behind the simulation. */
+  syncScene(qpos) { this.viewer._fk(qpos); this.viewer._applySoftLive(); }
+
   _robotGroups() { return this.viewer.bodies.filter((b) => /^(right|left)\//.test(b.name)).map((b) => b.grp); }
   _withVisibility(fn, hideRobot) {
     const v = this.viewer, hidden = [];

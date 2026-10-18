@@ -95,12 +95,14 @@ class CartesianInterpolator:
         self.active = False
         self._Cp = self._Cr = None
         self._R_goal = self.Rm.copy()
+        self.p_goal = self.p.copy()
         self._t0 = 0.0
         self._T = 1.0
 
     def set_goal(self, T_goal: np.ndarray, duration: float, t_now: float, v_goal=None):
         duration = max(float(duration), 1e-3)
         self._R_goal = T_goal[:3, :3].copy()
+        self.p_goal = T_goal[:3, 3].copy()
         # rotation expressed as r = log(R_goal^T R) in the goal frame
         r0 = R.from_matrix(self._R_goal.T @ self.Rm).as_rotvec()
         dr0 = self._R_goal.T @ self.w
