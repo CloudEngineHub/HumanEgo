@@ -1,19 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-Build the web viewer's data: models, rollouts, manifest.
+Build the web viewer's data: models, rollouts, manifest — then pack them for the web.
 
     python simulation/scripts/build_web.py --configs trossen_wxai:realsense_d405:bimanual --n 24 --workers 6
-    python simulation/scripts/build_web.py --manifest-only
+    python simulation/scripts/build_web.py --profile tuned --configs franka_panda:realsense_d405:bimanual:10
+    python simulation/scripts/build_web.py --configs ur5e:realsense_d405:bimanual:10:tuned   # per-config profile
+    python simulation/scripts/build_web.py --manifest-only            # re-generate the manifest + pack
 
-Rollouts come from the released policy on randomized initial conditions
-(paper protocol, fixed seeds) with the physical drop-in intro recorded.
+Config spec: robot:camera:mode[:n[:profile]]. Rollouts come from the released policy on
+randomized initial conditions (paper protocol, fixed seeds) with the physical drop-in intro
+recorded. The manifest's numbers and notes are generated (humanego_sim/web_manifest.py); the
+build is packed in place afterwards (humanego_sim/web_pack.py, skip with --no-pack).
+For the whole site use scripts/rebuild_site.py.
 """
 import argparse
-import glob
 import json
 import os
 import shutil
 import sys
+import time
 
 import numpy as np
 
@@ -25,12 +30,16 @@ os.environ.setdefault("MUJOCO_GL", "egl")
 from humanego_sim.cameras import CAMERAS  # noqa: E402
 from humanego_sim.env import ServeBreadSim, deep_update, load_config  # noqa: E402
 from humanego_sim.evaluate import evaluate  # noqa: E402
+from humanego_sim.live_export import export_live  # noqa: E402
+from humanego_sim.profiles import PROFILES, add_profile_arg, load_tuned, profile_info  # noqa: E402
 from humanego_sim.robots import ROBOTS  # noqa: E402
 from humanego_sim.sampling import sample_scene  # noqa: E402
+from humanego_sim import web_manifest  # noqa: E402
 from humanego_sim.web_export import export_model, export_rollout  # noqa: E402
-from humanego_sim.live_export import export_live  # noqa: E402
 
 WEB = os.path.join(SIM, "web")
+LOG_ROOT = os.path.join(SIM, "runs", "web")
+DEFAULT = {"robot": "trossen_wxai", "camera": "realsense_d405", "mode": "bimanual"}
 
 
 def mirror_pose(T):
@@ -80,17 +89,17 @@ def rollout_extras(env, log_dir, cfg):
     return {"kpts": kpts, "appear": appear, "look_ahead": int(cfg["control"]["look_ahead_offset"])}
 
 
-def build_config(robot, camera, mode, n, workers, seed, overrides):
+def build_config(robot, camera, mode, n, workers, seed, overrides, profile="production"):
     key = f"{robot}_{camera}_{mode}"
-    ov = deep_update(overrides, {"robot": robot, "camera": camera, "mode": mode})
+    ov = deep_update(overrides, {"robot": robot, "camera": camera, "mode": mode, "profile": profile})
     cfg = load_config(None, ov)
     env = ServeBreadSim(cfg)
     model_key = key
     export_model(env, WEB, model_key)
-    export_live(env, WEB, model_key)          # physics-only MJCF for the in-browser Live mode
+    export_live(env, WEB, model_key)          # physics-only MJCF (+ this profile's controller) for Live mode
     rng = np.random.default_rng(seed)
     scenes = [sample_scene(rng, mode) for _ in range(n)]
-    log_root = os.path.join(SIM, "runs", "web", key)
+    log_root = os.path.join(LOG_ROOT, key)
     shutil.rmtree(log_root, ignore_errors=True)
     st = evaluate(ov, scenes=scenes, workers=workers, seed=seed, log_root=log_root, intro=True)
     rolls = []
@@ -107,45 +116,22 @@ def build_config(robot, camera, mode, n, workers, seed, overrides):
             json.dump(ro, f, separators=(",", ":"))
         rolls.append({"id": rid, "scene": ro["scene"], "per_side": {s: {"success": v["success"]}
                       for s, v in ro["result"]["per_side"].items()}, "success": ro["result"]["success"]})
-    return {"robot": robot, "camera": camera, "mode": mode, "model": model_key, "rollouts": rolls}
+    info = profile_info(profile, robot)
+    info["eval"] = {"n": st["n"], "per_arm": st["per_side_success_rate"], "sides": st["side_success"],
+                    "both": st["success_rate"], "failure_modes": st["failure_modes"], "seed": seed}
+    return {"robot": robot, "camera": camera, "mode": mode, "model": model_key, "profile": info, "rollouts": rolls}
 
 
-def tuning_summary(name):
-    d = os.path.join(SIM, "autotune_runs", name, "iterations")
-    if not os.path.isdir(d):
+def _git_rev():
+    try:
+        import subprocess
+        return subprocess.run(["git", "-C", SIM, "rev-parse", "--short", "HEAD"], capture_output=True,
+                              text=True, timeout=10).stdout.strip() or None
+    except Exception:
         return None
-    batches = []
-    for p in sorted(glob.glob(os.path.join(d, "iter_*.json"))):
-        it = json.load(open(p))
-        batches.append({"scores": [round(c["stats"]["per_side_success_rate"], 3) for c in it["candidates"]],
-                        "action": it.get("decision", {}).get("action")})
-    best = None
-    for fn in ("final.json", "best.json"):          # final.json: winner re-validated on held-out scenes
-        fp = os.path.join(SIM, "autotune_runs", name, fn)
-        if os.path.exists(fp):
-            best = json.load(open(fp))
-            break
-    note = ""
-    if best and best.get("trials"):         # final.json from autotune_validate.py
-        prod = next((t for t in best["trials"] if t["name"] == "production"), None)
-        v = best["validation"]
-        note = (f"Grey dots: candidates in each batch (per-arm success on shared random scenes); orange: best so far. "
-                f"On {best['n_scenes']} held-out scenes the tuned settings serve <b>{v['per_side_success_rate']:.0%}</b> "
-                f"per arm" + (f" vs <b>{prod['validation']['per_side_success_rate']:.0%}</b> with the production "
-                              f"controller." if prod else "."))
-        return {"batches": batches, "note": note, "best": best}
-    if best:
-        v = best.get("validation", {})
-        note = (f"Grey dots: candidates in each batch (per-arm success on shared random scenes); orange: best so far. "
-                f"Best per-arm success <b>{best['stats']['per_side_success_rate']:.0%}</b>"
-                + (f", validated at <b>{v['per_side_success_rate']:.0%}</b> on {v['n']} fresh scenes." if v else "."))
-    return {"batches": batches, "note": note, "best": best}
 
 
-TUNING_NOTE = None     # set from --tuning_note
-
-
-def write_manifest(configs, tuning_name):
+def write_manifest(configs, tuning_robot="trossen_wxai", media=None):
     man_p = os.path.join(WEB, "data", "manifest.json")
     old = json.load(open(man_p)) if os.path.exists(man_p) else {"configs": []}
     keep = {(c["robot"], c["camera"], c["mode"]): c for c in old.get("configs", [])}
@@ -154,59 +140,50 @@ def write_manifest(configs, tuning_name):
     cfgs = sorted(keep.values(), key=lambda c: (list(ROBOTS).index(c["robot"]) if c["robot"] in ROBOTS else 9,
                                                 list(CAMERAS).index(c["camera"]) if c["camera"] in CAMERAS else 9,
                                                 c["mode"] != "bimanual"))
-    summary = []
     for c in cfgs:
         c["live"] = os.path.exists(os.path.join(WEB, "assets", "live", c["model"], "spec.json")) and \
             os.path.exists(os.path.join(WEB, "assets", "policy", "serve_bread_meta.json"))
-        rs = c["rollouts"]
-        side = lambda s: (np.mean([r["per_side"][s]["success"] for r in rs if s in r["per_side"]])
-                          if any(s in r["per_side"] for r in rs) else None)
-        summary.append({"robot": c["robot"], "camera": c["camera"], "mode": c["mode"], "n": len(rs),
-                        "right": side("right"), "left": side("left"),
-                        "both": float(np.mean([r["success"] for r in rs])) if rs else None})
-        # feature a fully successful rollout
-        for r in rs:
-            r.pop("featured", None)
-        good = [r for r in rs if r["success"]]
-        if good:
-            good[0]["featured"] = True
-    man = {
-        "robots": {k: v.label for k, v in ROBOTS.items()},
-        "cameras": {k: v.label for k, v in CAMERAS.items()},
-        "configs": cfgs,
-        "default": {"robot": "trossen_wxai", "camera": "realsense_d405", "mode": "bimanual"},
-        "summary": summary,
-        "summary_note": ("Every rollout is a closed-loop run of the released checkpoint from a randomized initial "
-                         "condition (bread–plate offset, depth and bread yaw as in the paper's protocol), with "
-                         "<b>soft bread</b> held by friction alone and the controller settings found by the "
-                         "self-tuning loop on the Trossen rig. <b>Two arms</b>: one single-hand model drives both "
-                         "arms; the left arm sees a mirrored image, exactly as on the real robot. <b>Served</b> = "
-                         "released and resting on the plate (not touching the table). The left arm carries the "
-                         "7.4 cm-wide danish (8.8 cm max. gripper opening). Franka and UR5e run their own tuned "
-                         "calibration, but their hands suit the policy's deep end-on pinch less (short fingers, "
-                         "small pads)."),
-        "tuning": tuning_summary(tuning_name),
-    }
-    if TUNING_NOTE and man["tuning"]:
-        man["tuning"]["note"] = TUNING_NOTE
+    # the tuning plot shows the run behind the profile the default robot's rollouts use
+    prof = next((c.get("profile") for c in cfgs if c["robot"] == tuning_robot and c.get("profile")), None)
+    tuning = None
+    if prof and prof.get("profile") == "tuned":
+        tuning = web_manifest.tuning_section(load_tuned(tuning_robot))
+    extra = {"built": {"date": time.strftime("%Y-%m-%d"), "commit": _git_rev()}}
+    if media or old.get("media"):
+        extra["media"] = media or old.get("media")
+    if old.get("packed"):
+        extra["packed"] = old["packed"]
+    man = web_manifest.assemble(cfgs, {k: v.label for k, v in ROBOTS.items()},
+                                {k: v.label for k, v in CAMERAS.items()}, DEFAULT, tuning, extra)
     with open(man_p, "w") as f:
         json.dump(man, f, separators=(",", ":"))
     print(f"[web] manifest: {len(cfgs)} configs, {sum(len(c['rollouts']) for c in cfgs)} rollouts")
+    return man
 
 
-if __name__ == "__main__":
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--configs", default="trossen_wxai:realsense_d405:bimanual")
+def parse_spec(spec, n_default, profile_default):
+    parts = spec.split(":")
+    robot, camera, mode = parts[:3]
+    n = int(parts[3]) if len(parts) > 3 and parts[3] else n_default
+    profile = parts[4] if len(parts) > 4 else profile_default
+    if profile not in PROFILES:
+        raise SystemExit(f"{spec}: unknown profile {profile} (choose from {PROFILES})")
+    return robot, camera, mode, n, profile
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--configs", default="trossen_wxai:realsense_d405:bimanual",
+                    help="comma-separated robot:camera:mode[:n[:profile]]")
     ap.add_argument("--n", type=int, default=24)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--seed", type=int, default=2026)
-    ap.add_argument("--params", default=None, help="tuned parameters JSON (best.json) to apply")
-    ap.add_argument("--tuning", default="bimanual_v1")
+    ap.add_argument("--params", default=None, help="extra tuned parameters JSON (best.json) on top of the profile")
     ap.add_argument("--manifest-only", action="store_true")
-    ap.add_argument("--set", action="append", default=[], help="extra override, e.g. control.grasp_assist={\"enabled\": true}")
-    ap.add_argument("--tuning_note", default=None, help="HTML note under the tuning plot")
-    args = ap.parse_args()
-    TUNING_NOTE = args.tuning_note
+    ap.add_argument("--set", action="append", default=[], help="extra override, e.g. control.alpha=0.3")
+    ap.add_argument("--no-pack", action="store_true", help="leave the JSON rollouts / GLBs / videos unpacked")
+    add_profile_arg(ap)
+    args = ap.parse_args(argv)
     overrides = {}
     if args.params:
         from autotune.params import params_to_overrides
@@ -218,10 +195,20 @@ if __name__ == "__main__":
     built = []
     if not args.manifest_only:
         for spec in args.configs.split(","):
-            parts = spec.split(":")
-            robot, camera, mode = parts[:3]
-            n = int(parts[3]) if len(parts) > 3 else args.n
-            print(f"[web] building {robot} / {camera} / {mode} ({n} rollouts)", flush=True)
-            built.append(build_config(robot, camera, mode, n, args.workers, args.seed, overrides))
-            write_manifest(built, args.tuning)         # usable after every config
-    write_manifest(built, args.tuning)
+            robot, camera, mode, n, profile = parse_spec(spec, args.n, args.profile)
+            print(f"[web] building {robot} / {camera} / {mode} ({n} rollouts, profile {profile})", flush=True)
+            built.append(build_config(robot, camera, mode, n, args.workers, args.seed, overrides, profile))
+            write_manifest(built)         # usable after every config
+    man = write_manifest(built)
+    if not args.no_pack:
+        from humanego_sim.web_pack import pack_web
+        pack_web(WEB, log_root=LOG_ROOT)
+        man = json.load(open(os.path.join(WEB, "data", "manifest.json")))
+    errs = web_manifest.validate(man, WEB)
+    if errs:
+        raise SystemExit("[web] manifest invalid:\n  " + "\n  ".join(errs))
+    return man
+
+
+if __name__ == "__main__":
+    main()
