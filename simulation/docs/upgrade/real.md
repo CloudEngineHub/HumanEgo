@@ -48,3 +48,9 @@ Branch `upgrade/real`, worktree `/home/leo/leo/HumanEgo-wt/real` (from origin/ma
   * The calibration puts the camera 0.221 m above the bases, so the real bases are ≈0.15 m above the table (camera ≈0.37 m). The sim has 0.215 m (0.436 m), an inference from a `safe_z_min` comment.
   * Sweep queued: cam_height 0.366 (single / bimanual, production / tuned), 0.346, 0.396.
 * Height sweep, seed 7777: single-arm production at cam_height 0.366 → **67.5 %** (27/40; 9 grasp misses, 3 rim, 1 drop) vs 12.5 % at 0.436. (Box load ~120 from other jobs; runs are slow.)
+* Height sweep at cam_height 0.366, seed 7777:
+  * single production 67.5 %;
+  * single tuned 85.0 %;
+  * bimanual production 56.2 % per arm (R 71.9, L 40.6; both served 28 %).
+  * Bimanual tuned, 0.396 and 0.346 are still running.
+  * Landed on main 12ec02b (via worktree HumanEgo-wt/real-land; checks: pyflakes, video_timing, sim_phases, replay scene + kinematic on the fixture).

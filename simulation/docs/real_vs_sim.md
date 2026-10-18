@@ -14,7 +14,9 @@ statistics). Tools: `scripts/real/` (below).
 2. **Most likely cause: the table height relative to the robot.**
    * The sim places the arm bases 0.215 m above the table. That figure was inferred from a `safe_z_min` comment.
    * Two real front-view frames give **≈0.15 m** (camera ≈0.37 m instead of 0.436).
-   * With the table 10 cm higher, sim production jumps to **75 %**; tuned to 94 %. Sweep at the measured height: §4.
+   * At the measured height, sim production rises from 12.5 % to **67.5 %** single-arm, and from 41 % to 56 % per arm bimanual (right 72 %, left 41 %). With the table 10 cm higher: 75 %.
+   * The tuned controller is insensitive to it (82.5 → 85 %).
+   * The remaining gap to the real 95 % is grasp misses (9/40) and breads on the rim (3/40).
 3. **The video agrees with the sim on:**
    * transport duration (scale-free, relative to the wrap-up);
    * lift height (production);
@@ -217,7 +219,7 @@ The data-efficiency series would give 8 points on one curve; it is the best targ
 |---|---|---|---|---|
 | 0.436 (0.215 m, current) | 12.5 % | 82.5 % | 40.6 % | 92.2 % |
 | 0.396 (0.175 m) | pending | | | |
-| 0.366 (0.145 m, video estimate) | **67.5 %** | pending | pending | pending |
+| 0.366 (0.145 m, video estimate) | **67.5 %** | 85.0 % | 56.2 % (R 72, L 41) | pending |
 | 0.346 (0.125 m) | pending | | | |
 | 0.336 (0.115 m) | 75.0 % | 93.8 % | | |
 
