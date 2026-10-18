@@ -118,6 +118,7 @@ def main(argv=None):
     ap.add_argument("--record-python", default=RECORD_PY if os.path.exists(RECORD_PY) else sys.executable,
                     help="python with Playwright + Chromium for web/tools/record.py")
     ap.add_argument("--video-size", default="1280x720")
+    ap.add_argument("--video-seconds", type=float, default=45.0, help="cap per video (sim seconds)")
     ap.add_argument("--dry-run", action="store_true")
     add_profile_arg(ap, default=None)
     args = ap.parse_args(argv)
@@ -152,7 +153,7 @@ def main(argv=None):
     if not args.no_videos:
         t1 = time.time()
         media = record_videos(man, args.record_python, sorted({s[0] for s in specs}, key=list(build_web.ROBOTS).index),
-                              size=args.video_size)
+                              size=args.video_size, max_seconds=args.video_seconds)
         timings["videos"] = round(time.time() - t1)
         man = build_web.write_manifest([], media=media)
         pack_web(WEB, log_root=build_web.LOG_ROOT, verbose=False)     # re-applies fmt to the rewritten manifest

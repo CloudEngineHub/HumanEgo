@@ -242,7 +242,53 @@ the policy camera):
 * The differences are only texture re-encodes (bread, table, arm) and the re-encoded policy
   video. There are no silhouette or timing differences.
 
-(After numbers: §4a.)
+### 4a. After
+
+Headless Chrome with a cold cache, served like GitHub Pages. "Before" is the deployed build; the
+box was busier during the "after" runs (load ~30 vs ~6), which only penalises "after".
+
+| first load | before | after |
+|---|---|---|
+| wire bytes (default config) | 5.59 MB, 48 req | **2.93 MB**, 49 req |
+| ready, desktop, unthrottled | 1.31 s | **0.73 s** |
+| ready, desktop, Fast 4G | 5.62 s | **3.38 s** |
+| ready, phone (4× CPU), Slow 4G | 28.9 s | **16.0 s** |
+| Franka config, Fast 4G | 8.25 MB, 8.54 s | **3.51 MB, 3.90 s** |
+
+What is left in the first load (2.93 MB):
+
+| item | size |
+|---|---|
+| bread GLBs (WebP, not gzip-able) | 1.71 MB |
+| Trossen GLB | 0.51 MB |
+| three.js from jsdelivr | 0.49 MB |
+| rollout `.bin` + policy video | 80 KB |
+| textures | 46 KB |
+| manifest | 4 KB |
+
+Live mode is unchanged in bytes (the ONNX policy) and works in every setting:
+
+| setting | ready | download | 3 re-plans |
+|---|---|---|---|
+| desktop, WebGPU | 5.2 s | 64 MB | 2.6 s |
+| desktop, WASM fallback | 3.5 s | 36 MB | 4.0 s |
+| phone, WASM | 9.4 s | 36 MB | 16 s |
+
+The phone numbers are noisier under the load; there were no errors. `check_rollouts.py`
+decoded all packed rollouts in Chrome identically to their JSON.
+
+Screenshot diff, the 3D scene only (HUD, policy-input picture and timeline masked):
+
+| comparison | PSNR | pixels > 8/255 |
+|---|---|---|
+| before vs after | 45.5–49.3 dB | 0.05–0.45 % |
+| noise floor (same build twice) | 49.6–56.6 dB | 0.05–0.21 % |
+
+The remaining differences are texture re-encodes and flat-normal Franka parts. Full frames,
+including the HUD: 40.8–48.7 dB; the 40.8 dB case is the HUD title shifted by about a pixel.
+
+Phone layout after: the viewer and its timeline are on the first screen, the HUD title is
+ellipsised, the camera buttons fit, and the bar fades at its edge.
 
 ## Follow-ups (not done here)
 
