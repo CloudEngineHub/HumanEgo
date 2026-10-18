@@ -1,44 +1,45 @@
 {
  "robot": "franka_panda",
- "autotune_run": "franka_v3",
- "chosen": "batch3_0.807",
+ "autotune_run": "franka_panda_v4",
+ "chosen": "batch4_0.845",
  "requires": {
   "control.grasp_assist.enabled": true
  },
  "held_out": {
   "n_scenes": 24,
   "seed": 7777,
-  "per_arm": 0.625,
+  "per_arm": 0.729,
   "per_side": {
-   "right": 0.875,
-   "left": 0.375
+   "right": 0.917,
+   "left": 0.542
   },
-  "both": 0.333
+  "both": 0.5
  },
  "params": {
-  "control.grasp_assist.lateral_gain": 0.3592944624491984,
-  "control.grasp_assist.along_max": 0.05927730313679491,
-  "control.grasp_assist.height_max": -0.0006724127146712222,
-  "control.grasp_assist.arrive_tol": 0.002077117729583439,
-  "control.grasp_assist.close_hold": 0.5064968923863504,
-  "control.grasp_assist.regrasp_max": 2,
-  "control.grasp_assist.retry_lower": 0.010143958613875282,
-  "control.grasp_assist.retry_inward": 0.012971213853535885,
-  "control.alpha": 0.3884347031046941,
-  "control.duration_smooth_param": 2.0,
-  "control.tcp_offset": 0.019404754183786593,
-  "control.tool_pitch_deg": -5.733670213106784,
-  "control.grasp_threshold": 0.3752076824392497,
-  "control.grasp_assist.q_empty": 0.029999999999999995
+  "control.grasp_assist.lateral_gain": 0.2361607691188846,
+  "control.grasp_assist.along_max": 0.07,
+  "control.grasp_assist.height_max": 0.0028099505567728087,
+  "control.grasp_assist.arrive_tol": 0.0030002878477919394,
+  "control.grasp_assist.close_hold": 0.5312962863928001,
+  "control.grasp_assist.regrasp_max": 3,
+  "control.grasp_assist.retry_lower": 0.013805791937165452,
+  "control.grasp_assist.retry_inward": 0.00513817063111233,
+  "control.alpha": 0.13245488942640904,
+  "control.duration_smooth_param": 4.098548876527973,
+  "control.tcp_offset": 0.001641388668759819,
+  "control.tool_pitch_deg": -10.593160100644058,
+  "control.grasp_threshold": 0.4116735100479042,
+  "control.grasp_assist.q_empty": 0.028278725069421008
  },
  "held_out_2": {
   "n_scenes": 24,
   "seed": 8888,
-  "per_arm": 0.604,
+  "per_arm": 0.729,
   "per_side": {
-   "right": 0.875,
-   "left": 0.333
+   "right": 0.833,
+   "left": 0.625
   },
-  "both": 0.333
- }
+  "both": 0.458
+ },
+ "note": "Controller-only re-tune (autotune franka_panda_v4) on physics v2 at the measured table height and the 14.5 cm croissant, from franka_v3. Previous settings on the same scenes: 0.604 / 0.604 per arm (seeds 7777 / 8888); the +12.5 pts gain repeats on both seeds but is not significant on either alone (n = 24, McNemar p = 0.24 on 8888)."
 }
