@@ -35,6 +35,14 @@ class FakeEnv:
             z[self.masks[n] > 0] = Z_BREAD
         self.depth = z
         self.rng = np.random.default_rng(0)
+        # what SimPerception's robustness layer reads (all perturbations off by default)
+        from humanego_sim.env import load_config
+        self.cfg = load_config()
+        self.obj_names = list(self.masks)
+        self.distractors = []
+        self.meta = {}
+        import mujoco
+        self.m = mujoco.MjModel.from_xml_string('<mujoco><worldbody><camera name="policy_cam"/></worldbody></mujoco>')
 
     def _ellipse(self, c, ax):
         m = np.zeros((self.H, self.W), np.uint8)
@@ -44,7 +52,7 @@ class FakeEnv:
     def render_segmentation(self):
         return {k: v.copy() for k, v in self.masks.items()}
 
-    def render_depth(self, noise=True):
+    def render_depth(self, noise=True, artifacts=None):
         return self.depth + (self.rng.normal(0, 4e-4, self.depth.shape).astype(np.float32) if noise else 0)
 
     def cam_point(self, uv, z):
