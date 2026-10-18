@@ -525,8 +525,10 @@ python simulation/scripts/autotune.py --name my_rig --pop 8 --scenes 14 --worker
 Searched parameters (`autotune/params.py`): the controller knobs of
 `cfg/inference/serve_bread/Control.yaml` (EMA, look-ahead, stride, goal-time factor,
 safety cage, grasp threshold and look-ahead window, idle-done release, forced lift),
-the TCP offset, and the bread physics within the range of real crumb (Young's modulus,
-damping, crust friction, gripper force cap). Then
+and the TCP offset. Physics is not searched: its parameters come from measurements and the
+literature (`docs/physics_params.md`); `autotune.params.PHYSICS` (bounded by those ranges) is for
+sensitivity studies only. (Runs up to `soft_v5` also searched the crumb modulus, damping, crust
+friction and gripper force cap; the shipped `configs/tuned/*.json` contain no physics.) Then
 
 ```bash
 python simulation/scripts/autotune_validate.py --name my_rig --top 4 --min_iter 5 --n 32

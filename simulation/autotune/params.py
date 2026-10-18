@@ -4,8 +4,8 @@ Tunable parameters of the simulator and of the low-level controller.
 
 Each `ParamSpec` maps a scalar to a dotted config path. Bounds are kept inside
 physically / operationally plausible ranges: the tuner may make the controller
-better or the bread softer within the range of real crumb, but it may not make
-bread weightless, sticky or teleport the arm.
+better, but the default space holds no physics: the simulator's parameters come from measurements
+(docs/physics_params.md) and stay fixed; PHYSICS / ROBOT_GRIPPER are for sensitivity studies only.
 """
 from __future__ import annotations
 
@@ -58,11 +58,17 @@ DEFAULT_SPACE: List[ParamSpec] = [
     ParamSpec("control.idle_dist_threshold", 0.04, 0.18, 0.13, note="hand-to-plate distance for release"),
     ParamSpec("control.forced_lift_height", 0.0, 0.10, 0.05, note="post-grasp lift bias, m"),
     ParamSpec("control.tool_pitch_deg", -25.0, 40.0, 0.0, note="gripper held this much more level than the EE pose"),
-    # ---- simulator physics: soft bread (MuJoCo flex) and contact, real-world ranges ----
-    ParamSpec("physics.soft.young", 6e3, 6e4, 2e4, "log", group="physics", note="crumb Young's modulus, Pa"),
-    ParamSpec("physics.soft.damping", 5e-3, 6e-2, 3e-2, "log", group="physics", note="crumb viscous loss, s"),
-    ParamSpec("physics.bread_friction.0", 0.6, 1.5, 1.0, group="physics", note="crust on finger pads"),
-    ParamSpec("physics.gripper_force", 8.0, 35.0, 12.0, group="physics", note="gripper force cap, N (Menagerie: 35)"),
+]
+
+# Simulator physics, bounded by the measured / published ranges (docs/physics_params.md). NOT searched by
+# default: tuning physics to the policy's score bends the simulator to the policy. Use these only for
+# sensitivity studies (`--space` by name), never for a shipped controller.
+PHYSICS: List[ParamSpec] = [
+    ParamSpec("physics.soft.young", 1e4, 6e4, 2e4, "log", group="physics", note="crumb Young's modulus, Pa"),
+    ParamSpec("physics.soft.damping", 2e-3, 3.2e-2, 3e-2, "log", group="physics", note="Rayleigh, s (tan d 0.13-0.2 at 1-10 Hz)"),
+    ParamSpec("physics.pad_friction", 0.5, 1.1, 0.8, group="physics", note="crust on the finger pads"),
+    ParamSpec("physics.bread_friction.0", 0.25, 0.55, 0.4, group="physics", note="crust on hard surfaces / crust"),
+    ParamSpec("physics.gripper_kp_scale", 0.5, 4.0, 1.0, "log", group="physics", note="Trossen gripper servo x Menagerie"),
 ]
 
 # grasp skill of the low-level controller (control.grasp_assist; controller.py)
@@ -78,11 +84,12 @@ GRASP_SKILL: List[ParamSpec] = [
     ParamSpec("control.grasp_assist.retry_inward", 0.0, 0.025, 0.01, note="... and this much closer to the middle, m"),
 ]
 
-# gripper servo of the non-Trossen hands (Menagerie Franka: ~3 N on a bread; 2F-85: tendon force cap)
+# gripper force of the non-Trossen hands, within each datasheet (physics: not searched by default)
 ROBOT_GRIPPER: List[ParamSpec] = [
-    ParamSpec("physics.robot_gripper.franka_panda.kp_scale", 1.0, 10.0, 1.0, "log", group="physics",
-              note="Franka hand servo stiffness x Menagerie"),
-    ParamSpec("physics.robot_gripper.ur5e.force", 10.0, 60.0, 40.0, group="physics", note="2F-85 force cap, N"),
+    ParamSpec("physics.robot_gripper.franka_panda.force", 10.0, 140.0, 40.0, "log", group="physics",
+              note="Franka tendon force cap = 2 x N per finger (70 N cont. per finger max)"),
+    ParamSpec("physics.robot_gripper.ur5e.force", 2.2, 26.0, 2.2, "log", group="physics",
+              note="2F-85 tendon cap, ~9.1 N per pad per unit (20-235 N)"),
 ]
 
 # the earlier rigid-bread proxy (physics.bread_model: rigid)
@@ -96,7 +103,7 @@ RIGID_PHYSICS: List[ParamSpec] = [
 def space_from_names(names: Optional[List[str]] = None) -> List[ParamSpec]:
     if not names:
         return list(DEFAULT_SPACE)
-    by = {p.name: p for p in RIGID_PHYSICS + ROBOT_GRIPPER + GRASP_SKILL}
+    by = {p.name: p for p in RIGID_PHYSICS + PHYSICS + ROBOT_GRIPPER + GRASP_SKILL}
     by.update({p.name: p for p in DEFAULT_SPACE})
     return [by[n] for n in names]
 
