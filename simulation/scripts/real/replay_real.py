@@ -396,9 +396,13 @@ def real_phases(log: dict, T_base_in_world: Dict[str, np.ndarray], bread_world: 
         g = st.get(f"{s}_g_pos")
         t_open = None
         if r["t_close"] is not None and g is not None:
+            # release = the gripper reopens (> 60 % open) after it was measured closed (< 50 %);
+            # a soft bread can keep the fingers above 50 % for a while after the close command
             gg = g[m] / g_max[s]
-            io = np.where((t > r["t_close"] + 0.6) & (gg > 0.5))[0]
-            t_open = float(t[io[0]]) if len(io) else None
+            ic = np.where((t >= r["t_close"]) & (gg < 0.5))[0]
+            if len(ic):
+                io = np.where((t > t[ic[0]]) & (gg > 0.6))[0]
+                t_open = float(t[io[0]]) if len(io) else None
         dn = [e["t"] for e in ev if e.get("kind") == "done" and e.get("side") == s]
         r["t_done"] = dn[0] if dn else None
         r["done_reason"] = next((e.get("reason") for e in ev if e.get("kind") == "done" and e.get("side") == s), None)
