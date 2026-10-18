@@ -16,12 +16,13 @@ policy:
   seed: 0                                       # flow-matching noise seed (fixed per episode, like the real loop)
 
 rig:
-  # Camera optical centre above the table top. The real driver clamps EE targets
-  # at safe_z_min = -0.20 m in the arm-base frame "to protect the table", so the
-  # table top sits just below that: bases 0.215 m above the table -> camera
-  # 0.215 + 0.221 = 0.436 m. Objects then sit ~0.60 m from the camera, inside the
-  # depth range of the released human training data (0.65 +- 0.12 m).
-  cam_height: 0.436
+  # Camera optical centre above the table top. Measured from two real front-view frames
+  # (arms at home): bases ~0.15 m above the table, camera 0.221 m above the bases -> 0.366 m
+  # (docs/real_vs_sim.md, docs/proposed_scene.json; confidence medium, confirm with a real
+  # log). The earlier 0.436 (bases 0.215 m up) was inferred from the Control.yaml comment that
+  # safe_z_min = -0.20 "protects the table"; at 0.366 the production controller's single-arm
+  # success rises from 12.5 % to 67.5 % (real: 95 %).
+  cam_height: 0.366
   # Hand-eye calibration of the real HumanEgo rig (AriaMimic cfg/inference/serve_bread)
   T_base_in_cam:
     right: [[0.0, -1.0, 0.0, 0.323765], [-0.60181502, 0.0, -0.79863551, 0.10437084],
@@ -43,11 +44,11 @@ scene:
   # bread yaw ~90 deg = long axis left-right in the image, as in the human demos.
   # Real bimanual rollout: croissant for the right arm, sugar danish loaf for the left.
   bread:
-    right: {type: croissant, pose: [0.46, -0.27, 95.0]}
+    right: {type: croissant, pose: [0.46, -0.27, 95.0], scale: 1.06}   # 14.5 cm long, as in the human data
     left: {type: bun, pose: [0.46, 0.27, 85.0]}
   single:                  # used when mode == single (paper layout: plate left, bread right)
     plate: [0.47, 0.11, 0.0]
-    bread: {type: croissant, pose: [0.47, -0.15, 95.0]}
+    bread: {type: croissant, pose: [0.47, -0.15, 95.0], scale: 1.06}
 
 physics:
   timestep: 0.002
