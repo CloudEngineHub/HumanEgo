@@ -54,3 +54,6 @@ Branch `upgrade/real`, worktree `/home/leo/leo/HumanEgo-wt/real` (from origin/ma
   * bimanual production 56.2 % per arm (R 71.9, L 40.6; both served 28 %).
   * Bimanual tuned, 0.396 and 0.346 are still running.
   * Landed on main 12ec02b (via worktree HumanEgo-wt/real-land; checks: pyflakes, video_timing, sim_phases, replay scene + kinematic on the fixture).
+* Sweep finished, single production by cam_height: 0.436 → 12.5 %, 0.396 → 40 %, 0.366 → 67.5 %, 0.346 → 75 %, 0.336 → 75 %.
+  * Bimanual tuned at 0.366: 79.7 % per arm (R 81, L 78) vs 92.2 % at 0.436.
+  * Conclusion: table height is the single largest sim-to-real lever found. Next: E1 (real depth gives the camera height directly), then re-tune.

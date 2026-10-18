@@ -15,7 +15,7 @@ statistics). Tools: `scripts/real/` (below).
    * The sim places the arm bases 0.215 m above the table. That figure was inferred from a `safe_z_min` comment.
    * Two real front-view frames give **≈0.15 m** (camera ≈0.37 m instead of 0.436).
    * At the measured height, sim production rises from 12.5 % to **67.5 %** single-arm, and from 41 % to 56 % per arm bimanual (right 72 %, left 41 %). With the table 10 cm higher: 75 %.
-   * The tuned controller is insensitive to it (82.5 → 85 %).
+   * The tuned controller is insensitive to it single-arm (82.5 → 85 %), but bimanual drops 92 → 80 % per arm: it was fitted at the assumed height.
    * The remaining gap to the real 95 % is grasp misses (9/40) and breads on the rim (3/40).
 3. **The video agrees with the sim on:**
    * transport duration (scale-free, relative to the wrap-up);
@@ -213,14 +213,18 @@ The data-efficiency series would give 8 points on one curve; it is the best targ
   * production sim fails everywhere at the nominal geometry;
   * the one large sim effect is table height.
 
-**Table-height sweep** (production / tuned, seed 7777): see `docs/upgrade/real.md` for the final numbers.
+**Table-height sweep** (seed 7777; single arm 40 scenes, bimanual 32). The table is the only
+thing that moves: the camera keeps its calibration to the arm bases.
+* Production rises monotonically as the table comes up (12.5 → 40 → 67.5 → 75 %), plateauing at ~75 %.
+* The tuned controller is flat on the single arm (82.5 → 85 %). It loses 12 points per arm bimanual (92 → 80 %): it was tuned at the assumed height.
+* **Re-tune at the measured height** before trusting tuned numbers.
 
 | `rig.cam_height` (bases above table) | single production | single tuned | bimanual production (per arm) | bimanual tuned |
 |---|---|---|---|---|
 | 0.436 (0.215 m, current) | 12.5 % | 82.5 % | 40.6 % | 92.2 % |
-| 0.396 (0.175 m) | pending | | | |
-| 0.366 (0.145 m, video estimate) | **67.5 %** | 85.0 % | 56.2 % (R 72, L 41) | pending |
-| 0.346 (0.125 m) | pending | | | |
+| 0.396 (0.175 m) | 40.0 % | | | |
+| 0.366 (0.145 m, video estimate) | **67.5 %** | 85.0 % | 56.2 % (R 72, L 41) | 79.7 % (R 81, L 78) |
+| 0.346 (0.125 m) | 75.0 % | | | |
 | 0.336 (0.115 m) | 75.0 % | 93.8 % | | |
 
 ## 5. Real-robot logging and one-to-one replay

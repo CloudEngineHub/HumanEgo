@@ -4,29 +4,68 @@
   "cam_height": {
    "current": 0.436,
    "proposed": 0.366,
-   "range_to_test": [0.346, 0.396],
+   "range_to_test": [
+    0.346,
+    0.396
+   ],
    "evidence": "Two full-resolution front-view frames with the arms folded at home (website serve_bread.mp4 last frame, cross_condition_3.mp4 first frame): camera-above-arm-base / arm-base-above-table = 398/271 and 330/225 px = 1.47 at nearly the same depth. Hand-eye calibration puts the D405 0.221 m above the bases, so bases ~0.15 m (0.14-0.16 with perspective) above the table and the camera ~0.37 m. The current 0.215 m base height is an inference from the Control.yaml comment that safe_z_min = -0.20 'protects the table'.",
-   "impact": "single-arm production success (paper protocol, seed 7777): 12.5 % at 0.436 vs 75 % at 0.336 (table 10 cm higher); 0.366 / 0.346 / 0.396 sweep results in real_vs_sim.md",
+   "impact": "single-arm production success, paper protocol, seed 7777, 40 scenes, by cam_height: 0.436 -> 12.5 %, 0.396 -> 40 %, 0.366 -> 67.5 %, 0.346 -> 75 %, 0.336 -> 75 %; bimanual production at 0.366: 56.2 % per arm (0.436: 40.6 %); tuned single 85 % (82.5 %), tuned bimanual 79.7 % (92.2 %; tuned at 0.436, re-tune needed)",
    "confidence": "medium: pixel ratio from a monocular third-person view; confirm with the first real log (replay_real.py fits the table plane in the logged D405 depth: camera height above the table directly)"
   }
  },
  "bread_croissant": {
-  "extents_cm": {"current": [13.8, 6.2, 5.0], "proposed": [14.5, 7.3, 5.4],
-                 "evidence": "human data, 60 episodes: length 14.5 (p5-p95 14.0-15.4; mask silhouette, 14.5 from contour+erosion), width 7.3 (5.4-8.1; mask, corrected for the side-view inflation; raw inner contour 4.7 is a lower bound), height 5.4 (4.9-7.3; semidense p95). One croissant type in all 61 episodes (same object as the real rollouts).",
-                 "confidence": "length high, height medium, width medium (correction model)"},
-  "scale_if_uniform": {"proposed": 1.06, "range_to_test": [1.0, 1.12],
-                       "note": "scene.bread.right.scale (uniform, same density, landed on main 22ede5e): 1.05 matches the length, 1.18 the width; 1.06 is the compromise. A non-uniform (x 1.05, y 1.15, z 1.08) bread_gen change would match all three."},
-  "mass_g": {"current": 50, "proposed": "keep 50 g (real weight, README); with uniform scale the sim scales mass by scale^3, so set density to keep 50 g if scale is changed"}
+  "extents_cm": {
+   "current": [
+    13.8,
+    6.2,
+    5.0
+   ],
+   "proposed": [
+    14.5,
+    7.3,
+    5.4
+   ],
+   "evidence": "human data, 60 episodes: length 14.5 (p5-p95 14.0-15.4; mask silhouette, 14.5 from contour+erosion), width 7.3 (5.4-8.1; mask, corrected for the side-view inflation; raw inner contour 4.7 is a lower bound), height 5.4 (4.9-7.3; semidense p95). One croissant type in all 61 episodes (same object as the real rollouts).",
+   "confidence": "length high, height medium, width medium (correction model)"
+  },
+  "scale_if_uniform": {
+   "proposed": 1.06,
+   "range_to_test": [
+    1.0,
+    1.12
+   ],
+   "note": "scene.bread.right.scale (uniform, same density, landed on main 22ede5e): 1.05 matches the length, 1.18 the width; 1.06 is the compromise. A non-uniform (x 1.05, y 1.15, z 1.08) bread_gen change would match all three."
+  },
+  "mass_g": {
+   "current": 50,
+   "proposed": "keep 50 g (real weight, README); with uniform scale the sim scales mass by scale^3, so set density to keep 50 g if scale is changed"
+  }
  },
  "bread_danish": {
   "note": "Not in the human data (robot rollouts only). Current 14.0 x 7.4 x 6.0 cm was measured against the plate in the rollout video; no new evidence."
  },
- "plate": {"diameter_cm": {"current": 24.5, "measured": 24.7, "range": [24.3, 25.4], "proposed": "keep"}},
+ "plate": {
+  "diameter_cm": {
+   "current": 24.5,
+   "measured": 24.7,
+   "range": [
+    24.3,
+    25.4
+   ],
+   "proposed": "keep"
+  }
+ },
  "layout_single_paper_protocol": {
   "paper": "bread-plate horizontal offset U[0, 50] cm, depths randomized independently, right arm starts from an 'arbitrary, non-aligned pose above the bread' (CoRL App. Task Details). Real Control.yaml however has go_initial_pose: True (fixed start).",
   "current_sim": "gap (y) 0.16-0.38 m, plate x 0.40-0.54, bread x 0.39-0.55, yaw 55-125 deg, fixed start pose",
   "human_data": "bread-plate distance 27.9 cm (22.2-31.4), plate straight left of the bread (direction 89 deg, 74-110), bread yaw 86 deg (67-101)",
-  "proposed": {"gap_m": [0.12, 0.45], "note": "widen towards the paper's [0, 50] cm offset where physically possible (bread and plate do not overlap below ~0.17 m centre distance with the 24.5 cm plate; the paper's 0 cm presumably means front-back offset). Keep yaw 90 +- 35. Optional start-pose noise (+-5 cm EE, +-10 deg) to cover 'arbitrary start'."},
+  "proposed": {
+   "gap_m": [
+    0.12,
+    0.45
+   ],
+   "note": "widen towards the paper's [0, 50] cm offset where physically possible (bread and plate do not overlap below ~0.17 m centre distance with the 24.5 cm plate; the paper's 0 cm presumably means front-back offset). Keep yaw 90 +- 35. Optional start-pose noise (+-5 cm EE, +-10 deg) to cover 'arbitrary start'."
+  },
   "confidence": "low: paper text only, no measured real positions"
  },
  "layout_vs_training_distribution": {
