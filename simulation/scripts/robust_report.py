@@ -19,8 +19,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SIM = os.path.dirname(HERE)
-sys.path.insert(0, SIM)
-sys.path.insert(0, HERE)
+sys.path.insert(0, SIM)                  # before scripts/: the autotune package, not scripts/autotune.py
 
 from autotune.params import params_to_overrides  # noqa: E402
 from evaluate import parse_sets  # noqa: E402

@@ -175,6 +175,19 @@ class SimPerception:
         self.latency = lat if lat["enabled"] else None
         self._lat_rng = rb.child_rng(env.rng, 4)
         self._last_clean = None
+        # what was drawn this episode, saved with the episode log (runner._save copies env.meta)
+        env.meta.pop("robustness", None)
+        info = {}
+        if self.calib_dT is not None:
+            info["calib_dT"] = np.round(self.calib_dT, 6).tolist()
+        if self.mask_noise is not None:
+            info["mask_bias_px"] = {k: round(v, 2) for k, v in self.mask_noise.bias.items()}
+        if self.depth_artifacts is not None:
+            info["depth_scale"] = round(self.depth_artifacts.scale, 5)
+        if any(self.distractor_bread):
+            info["distractor_as_bread"] = [d["type"] for d, b in zip(env.distractors, self.distractor_bread) if b]
+        if info:
+            env.meta["robustness"] = info
         env.obs_history = None
         if self.latency:
             age_max = (float(lat["image_ms"]) + float(lat["jitter_ms"])) / 1000.0
