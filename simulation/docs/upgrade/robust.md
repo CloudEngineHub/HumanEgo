@@ -145,6 +145,15 @@ distractor) stays.
 The lift is not where arms are lost: boundary and depth noise move the bread by about 2 mm.
 **Neither variant is adopted.** The code stays as options, off by default.
 
+**4c. Sanity check on physics v2** (main 22c0fa1 + a072157; Trossen, seed 7777, 32 scenes, tuned
+settings not yet re-tuned for v2):
+
+* clean 81 % [70, 89] (92 % before v2: more drops in transit, which the controller re-tune should address)
+* masks, fused (default): 80 % [68, 88], i.e. one point below clean. Before v2, single-frame masks
+  lost 11–12 points and fused masks lost 3–4.
+* masks, single frame (`--name trossen_v2_7777_single`): still running when the session stopped. Read it with
+  `robust_report.py --compare trossen_v2_7777_single:trossen_v2_7777 --conditions masks`.
+
 ## 5. Final report on the reserved scene set: commands (to run on the final physics)
 
 The batch was stopped before part B (by the coordinator): the reserved set must run on the
