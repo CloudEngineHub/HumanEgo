@@ -71,7 +71,7 @@ renders (±2 px bias, 1.5 px jitter, 5 % misses, 10 % blobs per frame). Real ima
 than renders, and this level stands in for that. The real segmenter is reported as its own
 condition (`dinosam`).
 
-## 3. Development-seed screen (Trossen, seed 7777, 32 scenes, commit 40bb979)
+## 3. Development-seed screen (Trossen, seed 7777, 32 scenes, commit 40bb979; physics before v2)
 
 Tuned settings + grasp skill (`robust_report.py --name trossen_dev7777 --log`). The paired
 difference vs clean is a scene bootstrap; p is McNemar.

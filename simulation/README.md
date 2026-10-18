@@ -395,8 +395,9 @@ How the levels were set:
 * **Calibration.** A typical, not best-case, checkerboard hand-eye calibration.
 * **Latency.** A 30 fps USB camera.
 
-**Development seeds, Trossen** (tuned settings + grasp skill, single-frame masks as released;
-32 scenes on seed 7777, plus 32 on seed 8888 for clean / masks / all). Difference vs clean on the
+**Development seeds, Trossen**, measured on the physics before v2 (commit dfb58b9), with tuned
+settings + grasp skill and single-frame masks as released (32 scenes on seed 7777, plus 32 on
+seed 8888 for clean / masks / all). Difference vs clean on the
 same scenes, scene-bootstrap 95 % CI; p is McNemar:
 
 | condition | per arm [95 % CI] | vs clean | p |
