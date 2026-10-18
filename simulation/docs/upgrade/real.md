@@ -58,3 +58,4 @@ Branch `upgrade/real`, worktree `/home/leo/leo/HumanEgo-wt/real` (from origin/ma
   * Bimanual tuned at 0.366: 79.7 % per arm (R 81, L 78) vs 92.2 % at 0.436.
   * Conclusion: table height is the single largest sim-to-real lever found. Next: E1 (real depth gives the camera height directly), then re-tune.
 * Human-data agent finished (60 episodes): croissant 14.5 × 7.1 × 5.4 cm; at t0 the human bread is 36 ± 4 cm forward of the camera foot (sim 39–55) and 14.5° below the optical axis (sim 4.3°); only 2/60 human layouts are inside the sampler on all axes. In-distribution set proposed in docs/proposed_scene.json (bread x 0.29–0.45, gap 0.21–0.31 m, yaw 87 ± 10°).
+* Coordinator adopted cam_height 0.366 and croissant scale 1.06 on main (c172786). real_vs_sim.md updated: adoption note, E1 now starts with tape measurements (base height above table, D405 height, distances, bread sizes/weights, side photo), E2/E3 predictions at the new height.

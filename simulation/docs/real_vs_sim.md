@@ -5,6 +5,12 @@ to measure it properly. Experiment log: `docs/upgrade/real.md`. Raw notes with f
 citations: `docs/upgrade/real_notes/` (paper numbers, video inventory, human-data object
 statistics). Tools: `scripts/real/` (below).
 
+**Adopted on main (c172786, 2026-10-18):**
+* `rig.cam_height` 0.436 → **0.366** (bases ≈0.15 m above the table, from the video measurement below).
+* Croissant `scale` **1.06** (14.5 cm long, as in the human data).
+* The controller is being re-tuned at the new height; the final reserved-seed numbers use these defaults.
+* Sim numbers in this report marked "0.436" were measured before the change. Confirm the height on the real rig with E1 (§6).
+
 ## Summary
 
 1. **The sim's main number does not match the real one.**
@@ -171,15 +177,15 @@ camera foot on the support, x = heading, y = left. Full statistics:
 
 **Real rig** (video, §1.2 frames with the arms folded): camera-above-base / base-above-table = 1.47
 in two frames. With the calibrated 0.221 m camera-above-base, the real bases are **≈0.15 m above
-the table** (sim 0.215 m) and the camera ≈0.37 m (sim 0.436 m).
+the table** (sim 0.215 m) and the camera ≈0.37 m (sim 0.436 m). Adopted as the sim default on
+2026-10-18 (`rig.cam_height` 0.366, c172786); still to be confirmed by a tape measurement (E1).
 
 Proposed values, for the robustness and physics sessions: **`docs/proposed_scene.json`**.
-* Table height (`rig.cam_height` 0.366, test 0.346–0.396).
-* Croissant 14.5 × 7.1 × 5.4 cm, or `scene.bread.right.scale` 1.06.
+* Table height (`rig.cam_height` 0.366, test 0.346–0.396). **Adopted**, c172786.
+* Croissant 14.5 × 7.1 × 5.4 cm, or `scene.bread.right.scale` 1.06. **Adopted (scale 1.06)**, c172786.
 * Only 2 of 60 human layouts fall inside the single-arm sampler on all axes.
 * An **in-distribution diagnostic set**: bread x 0.29–0.45 m (check reach), gap 0.21–0.31 m, yaw 87 ± 10°. Keep the current wide ranges as the out-of-distribution test.
 * A single-arm offset range widened towards the paper's.
-* An in-distribution diagnostic scene set (human-matched camera-frame depth / elevation).
 * `docs/proposed_portable_controller.json`: the tuned Trossen values restricted to knobs that exist in the real `Control.yaml` (alpha 0.175, `duration_smooth_param` 2.0, grasp threshold 0.65, idle distance 0.083 m, idle time 2.65 s), for real experiment E4.
 
 ## 4. Sim–real correlation
@@ -273,11 +279,18 @@ Check out AriaMimic `sim-logging`. Film every trial at real time (60 fps phone, 
 | id | what | trials | checkpoint / settings | measures | sim prediction |
 |---|---|---|---|---|---|
 | E0 | selftest + 1 logged rollout | 1 | released, production | `loop_dt` (sim assumes 0.3 s), files complete | — |
-| E1 | 5 static scenes at tape-measured positions (no policy), plus a 5-pose joint sweep | 5 + 1 | — | **table plane / camera height** (sim 0.436 m vs video ≈0.37 m), reconstruction error, FK residual | — |
-| E2 | paper protocol: single right arm, croissant, offsets 15–50 cm, yaw 60–120° | 20 | released, production `Control.yaml` | success, `done_reason`, `g_pos` while holding (does the 50 % flag fire?), release height, phases | 12.5 % at the sim's table height; at the measured height: §4 |
-| E3 | bimanual, croissant right, danish left | 20 | released, production | per-arm success, release behaviour, L/R timing | 41 % per arm (sim table height) |
-| E4 | E3 with `docs/proposed_portable_controller.json` in `Control.yaml` | 20 | released | does the sim-predicted gain transfer? | 62.5 % per arm (single arm 45 %) vs E3 |
+| E1 | **Tape-measure the rig** (see below), 5 static scenes at tape-measured positions (no policy), and a 5-pose joint sweep | 5 + 1 | — | **arm-base height above the table** (sim now 0.15 m, from video), camera height and table plane from depth, reconstruction error, FK residual | — |
+| E2 | paper protocol: single right arm, croissant, offsets 15–50 cm, yaw 60–120° | 20 | released, production `Control.yaml` | success, `done_reason`, `g_pos` while holding (does the 50 % flag fire?), release height, phases | 67.5 % at cam_height 0.366 (12.5 % at the old 0.436) |
+| E3 | bimanual, croissant right, danish left | 20 | released, production | per-arm success, release behaviour, L/R timing | 56 % per arm at 0.366 (R 72, L 41) |
+| E4 | E3 with `docs/proposed_portable_controller.json` in `Control.yaml` | 20 | released | does the sim-predicted gain transfer? | 62.5 % per arm, single arm 45 % (measured at 0.436; re-run at the new defaults before E4) |
 | E5 | if found or retrained: N12 and N24 data-efficiency checkpoints on the E2 protocol | 10 each | — | checkpoint-level correlation | run in sim when available |
+
+**E1 tape measurements** (≈10 min, before anything else; write them into the E1 notes):
+1. Height of each arm's base mounting surface (the plate the WidowX AI base is bolted to) above the table top, left and right. Expected ≈0.15 m; the sim used 0.215 m before 2026-10-18.
+2. Height of the D405 lens centre above the table top. Expected ≈0.37 m, i.e. the base height + 0.221 m from the hand-eye calibration. If this disagrees with (1) + 0.221 m, the calibration or the mount moved.
+3. Horizontal distance from the arm bases to the table's front edge, and from the bases to the plate centre at the usual layout.
+4. Croissant and danish length × width × height with a ruler, and their weights.
+5. One photo of the rig from the side with a tape measure in view.
 
 Then, for every log:
 
@@ -295,7 +308,7 @@ This gives per-trial sim-vs-real outcome, phases, grasp and release. To find the
   * widen the single-arm offsets;
   * sample the croissant size (`docs/proposed_scene.json`).
 * **Physics** (`softbody.py`, `scene.py`):
-  * set `rig.cam_height` from E1 (or 0.366 until then) before any further physics tuning;
+  * `rig.cam_height` is now 0.366 (adopted); update it from E1's tape measurement;
   * re-check the crumb damping and drop fixes once releases are placements (real) rather than drops;
   * after E2, calibrate squash so the real 50 % opening flag fires as it does on the robot, then drop the sim-only "stalled closed" grasp rule.
 * **Controller** (`controller.py`, `runner.py`):
