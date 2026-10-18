@@ -71,48 +71,81 @@ renders (±2 px bias, 1.5 px jitter, 5 % misses, 10 % blobs per frame). Real ima
 than renders, and this level stands in for that. The real segmenter is reported as its own
 condition (`dinosam`).
 
-## 3. Development-seed screen (in progress when this session stopped)
+## 3. Development-seed screen (Trossen, seed 7777, 32 scenes, commit 40bb979)
 
-**Closed loop, Trossen, tuned settings + grasp skill, seed 7777, 32 scenes**
-(`robust_report.py --name trossen_dev7777 --log`). Results land in
-`runs/robust_report/trossen_dev7777/<condition>.json`; `--table trossen_dev7777` prints them.
+Tuned settings + grasp skill (`robust_report.py --name trossen_dev7777 --log`). The paired
+difference vs clean is a scene bootstrap; p is McNemar.
 
-* clean: **92 % per arm [83, 97]**, matching the README's 91 % on the same scenes.
-* The other conditions were still running (box load average ~240 from other jobs).
+| condition | per arm [95 % CI] | right | left | both | vs clean | p |
+|---|---|---|---|---|---|---|
+| clean | **92 %** [83, 97] | 94 % | 91 % | 84 % | — | — |
+| masks | **80 %** [68, 88] | 81 % | 78 % | 66 % | −12 [−25, −2] | 0.039 |
+| depth | 86 % [75, 92] | 94 % | 78 % | 72 % | −6 [−14, +0] | 0.29 |
+| calib | 88 % [77, 94] | 84 % | 91 % | 81 % | −5 [−14, +3] | 0.38 |
+| latency | 92 % [83, 97] | 94 % | 91 % | 84 % | +0 | 1 |
+| bread_size | 89 % [79, 95] | 94 % | 84 % | 81 % | −3 [−14, +6] | 0.75 |
+| layout | 86 % [75, 92] | 88 % | 84 % | 78 % | −6 [−16, +2] | 0.22 |
+| table_height | 91 % [81, 96] | 94 % | 88 % | 81 % | −2 [−6, +3] | 1 |
+| lighting | 91 % [81, 96] | 94 % | 88 % | 84 % | −2 [−8, +3] | 1 |
+| distractors | 89 % [79, 95] | 91 % | 88 % | 81 % | −3 [−9, +0] | 0.5 |
+| **all** | **70 %** [58, 80] | 69 % | 72 % | 59 % | −22 [−39, −6] | 0.004 |
 
-**Open loop** (`robust_perception.py`, seed 7777, 32 scenes / 64 breads). "Shift" is how far the
-perceived bread centre moves from the clean perception of the same scene; "fail" counts
-breads with no keypoints or more than 5 cm off:
+Only mask noise and the combination are significant on 32 scenes.
 
-| condition | fail | shift median / p90 | notes |
-|---|---|---|---|
-| masks | 4 | 1.6 / 2.9 mm | all 4 failures are missed detections (one frame, released pipeline) |
-| depth | 0 | 2.1 / 4.6 mm | |
-| calib | 0 | 5.0 / 8.8 mm | |
-| table height | 0 | 2.0 / 4.8 mm | perceived centre height +0.5 mm (median) |
-| distractors | 1 | 0 | banana taken for bread → right arm's bread 16 cm off |
-| latency, lighting | 0 | 0 | they do not touch t = 0 perception (they only act on the policy image) |
-| all | 6 | 7.2 / 11.3 mm | |
+**Audit** (`robust_audit.py trossen_dev7777 clean masks all`): what lost the arms that clean served.
 
-**Mitigations, open loop:**
+* masks: 10 arms lost. **8 of them had a missed detection**: the bread (ep 5, 13, 21, 26), or the
+  plate (ep 16 and 17, both arms each; the plate mask is shared by both arms, so its miss costs
+  two). With an empty mask the object's frame is the identity and the policy closes on air. The
+  boundary errors (±2 px bias, 1.5 px jitter) move the perceived bread by only 1.6 mm (open
+  loop) and lose almost nothing.
+* all: 18 arms lost. 8 are the same missed detections. 2 are the box taken for bread (ep 2: the
+  right arm's bread perceived 16 cm off; ep 24: 33 cm off). The rest are spread over the
+  calibration / layout / size episodes, with no single cause.
+* A first reading blamed a "flipped plate frame" (38–108° rotations vs clean). Every one of
+  those rotations is a plate or bread with no keypoints (identity frame), i.e. a missed
+  detection, not frame instability.
 
-* **Fusing 5 detector frames** (`perception.mask_frames=5`): failures drop from 4 to 1 under
-  masks and from 6 to 3 under all. The clean perception is unchanged, because identical GT
-  frames fuse to the same mask. The remaining failures are persistent errors, which fusion
-  cannot remove: the distractor confusion, and scene 24. Closed-loop check pending.
-* **Lifting from a 3 px eroded mask** (`lift_reject.erode_px=3`): no gain under depth (shift
-  1.8 vs 2.1 mm) or masks, and the clean perception moves (centre error vs GT 1.97 vs 1.77
-  cm, axis p90 15.8° vs 14.6°). **Not adopted**; this verdict is open loop only.
+## 4. Perception-side mitigations (development seeds)
+
+**4a. Multi-frame mask fusion** (`perception.mask_frames: 5`). Run the detector on 5 frames, drop
+empty frames and frames whose area is off the median by > 35 %, then take a pixel majority
+vote. Hypothesis: misses are transient, so fusion removes them; a persistent confusion (the
+distractor) stays.
+
+* Open loop, seed 7777, 64 breads: failures 4 → 1 (masks) and 6 → 3 (all). The clean perception
+  is identical: the GT frames are identical, so the fused mask is the same mask.
+* Closed loop, seed 7777, masks: **80 % → 89 %** per arm (clean 92 %).
+* Pending in `scripts/robust_batch.sh`: all on 7777, and clean / masks / all on 8888.
+* Clean case: not re-run closed loop, because the perception input is bit-identical (fusing
+  identical GT masks).
+
+**4b. Outlier rejection in the keypoint lift** (`perception.lift_reject`). Open loop, seed 7777:
+
+* `erode_px: 3` (lift only from pixels ≥ 3 px inside the mask): no gain under depth (shift 1.8
+  vs 2.1 mm) or masks (failures unchanged, 4). It moves the clean perception (centre error vs
+  GT 1.97 vs 1.77 cm, axis p90 15.8° vs 14.6°).
+* `table_margin: 0.004` (drop keypoints lifted onto the calibrated table plane): never fires, so
+  the output is identical.
+
+The lift is not where arms are lost: boundary and depth noise move the bread by about 2 mm.
+**Neither variant is adopted.** The code stays as options, off by default.
 
 ## Open issues / hand-over
 
-* Finish the screen and run mitigations closed loop on both dev seeds (Trossen 32 scenes,
-  Franka / UR5e 24): `mask_frames=5` vs off, under clean / masks / all.
-* Final report on reserved seeds (e.g. 9001, `--final`, ~100 scenes per robot, all three robots):
-  `robust_report.py --robot <r> --seed 9001 --n 100 --final --log`, then
-  `robust_audit.py <name> all <worst>`, then the README "Robustness" section (not written yet).
-* `dinosam` condition (real segmenter in the loop) still to run closed loop, with ≤ 3 workers (~1 GB
-  GPU each for the server).
+* `scripts/robust_batch.sh` (resumable) runs everything that remains, in this order:
+  1. Fusion on the dev seeds.
+  2. Reserved set 9001 (n = 100) clean / masks / dinosam / all for all three robots.
+  3. The fused rows on 9001.
+  4. The other single perturbations on 9001.
+
+  Output goes to `runs/robust_report/<name>/` and the log to `runs/robust/batch.log`. When it
+  is done: `robust_report.py --table <names>`, the README table, `robust_audit.py` on the worst
+  reserved conditions.
+* Distractor confusion: a mask component that is not the bread wins when it is larger. A
+  workspace gate (drop detections whose lifted centroid lies outside the reachable table area)
+  would remove it. Not tried: the distractors are placed outside the workspace by
+  construction, so the gate would be circular here.
 * Needs a runner hook (controller session's `runner.py`): the latency option delays only the camera
   image. Proprioception delay and inference-latency jitter (pending delivery at P ± jitter) would
   need runner changes.
