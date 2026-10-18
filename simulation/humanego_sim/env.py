@@ -89,6 +89,11 @@ class ServeBreadSim:
             self.seg_label[(int(mujoco.mjtObj.mjOBJ_SKIN), mujoco.mj_name2id(self.m, mujoco.mjtObj.mjOBJ_SKIN, f"{name}_skin"))] = name
 
         self._init_arms()
+        # robustness hooks (humanego_sim/robustness.py): visual-only clutter in every render, and a
+        # short qpos history for rendering a delayed camera frame; both off by default
+        self.distractors: List[dict] = []
+        self.obs_history = None
+        self._d_past = None
         self.renderer = mujoco.Renderer(self.m, self.H, self.W) if render else None
         self._opt_clean = mujoco.MjvOption()
         self._opt_clean.geomgroup[G_ROBOT] = 0          # hide the robot (perfect "inpainting")
@@ -188,6 +193,8 @@ class ServeBreadSim:
                 arm.update(self.t)
             mujoco.mj_step(self.m, self.d)
             self.t += self.dt
+            if self.obs_history is not None:
+                self.obs_history.append((self.t, self.d.qpos.copy()))
 
     # ------------------------------------------------------------- geometry
     def body_T_world(self, name: str) -> np.ndarray:
@@ -200,21 +207,41 @@ class ServeBreadSim:
         return self.T_world_in_cam @ self.body_T_world(name)
 
     # ------------------------------------------------------------ rendering
-    def render_rgb(self, camera: str = "policy_cam", hide_robot: bool = False) -> np.ndarray:
-        """BGR uint8 (OpenCV order, like CamRS)."""
+    def _update_scene(self, camera: str, scene_option=None, data=None):
         r = self.renderer
-        r.update_scene(self.d, camera=camera, scene_option=self._opt_clean if hide_robot else None)
+        r.update_scene(self.d if data is None else data, camera=camera, scene_option=scene_option)
+        if self.distractors:
+            from .robustness import add_distractor_geoms
+            add_distractor_geoms(r.scene, self.distractors)
+        return r
+
+    def render_rgb(self, camera: str = "policy_cam", hide_robot: bool = False,
+                   qpos: Optional[np.ndarray] = None) -> np.ndarray:
+        """BGR uint8 (OpenCV order, like CamRS). `qpos`: render that (past) state instead of the current one."""
+        data = None
+        if qpos is not None:
+            if self._d_past is None:
+                self._d_past = mujoco.MjData(self.m)
+            data = self._d_past
+            data.qpos[:] = qpos
+            mujoco.mj_forward(self.m, data)
+        r = self._update_scene(camera, self._opt_clean if hide_robot else None, data)
         return np.ascontiguousarray(r.render()[:, :, ::-1])
 
-    def render_depth(self, noise: bool = True) -> np.ndarray:
+    def render_depth(self, noise: bool = True, artifacts=None) -> np.ndarray:
+        """Metric depth [m], 0 = invalid. `artifacts(z_noisy, z_clean)`: optional sensor artefacts
+        (robustness.DepthArtifacts) applied on top of the Gaussian noise."""
         r = self.renderer
         r.enable_depth_rendering()
-        r.update_scene(self.d, camera="policy_cam")
+        self._update_scene("policy_cam")
         z = r.render().astype(np.float32)
         r.disable_depth_rendering()
         if noise:
+            z_clean = z
             sig = self.cam.depth_noise_a + self.cam.depth_noise_b * z ** 2
             z = z + self.rng.normal(0.0, 1.0, z.shape).astype(np.float32) * sig
+            if artifacts is not None:
+                z = artifacts(z, z_clean)
             z[(z < self.cam.depth_min) | (z > self.cam.depth_max)] = 0.0
         return z
 
@@ -222,7 +249,7 @@ class ServeBreadSim:
         """Ground-truth object masks (uint8 0/255) — stands in for DINO-SAM."""
         r = self.renderer
         r.enable_segmentation_rendering()
-        r.update_scene(self.d, camera="policy_cam")
+        self._update_scene("policy_cam")
         seg = r.render()
         r.disable_segmentation_rendering()
         ids = seg[:, :, 0]

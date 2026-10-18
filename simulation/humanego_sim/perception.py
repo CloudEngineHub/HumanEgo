@@ -14,6 +14,11 @@ robot, using the *released* modules of this repo:
     pose         preprocess/OrientAnything.estimate_frame_pca1
     mirroring    utils/utils_math.mirror_pose     (left arm sees a flipped world)
 
+Robustness options (all off by default, README "Robustness"; models in robustness.py):
+perception.mask_noise / depth_artifacts / calib_error / latency perturb what this module sees,
+perception.mask_frames (multi-frame mask fusion) and perception.lift_reject (keypoint outlier
+rejection) are the perception-side mitigations.
+
 Every step (`make_side_image`) it composes the policy's clean image the same way
 as `_run_side`: the robot-free render (= perfect LaMa inpainting), object
 keypoints projected from the latched object poses, and the virtual gripper
@@ -30,6 +35,9 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+from collections import deque
+
+from . import robustness as rb
 from .env import REPO_ROOT
 
 if REPO_ROOT not in sys.path:
@@ -102,6 +110,20 @@ def split_mask_by_x(mask: np.ndarray, split_x: int) -> Dict[str, np.ndarray]:
     return {"right": right, "left": left}
 
 
+def fuse_masks(masks: List[np.ndarray], size_tol: float = 0.35) -> np.ndarray:
+    """Multi-frame mask fusion: ignore empty frames and frames whose area is off the median by more
+    than size_tol (a missed instance, a merged blob), then keep pixels set in most remaining frames."""
+    areas = np.array([np.count_nonzero(m) for m in masks], float)
+    ok = areas > 0
+    if not ok.any():
+        return np.zeros_like(masks[0])
+    med = float(np.median(areas[ok]))
+    ok &= np.abs(areas - med) <= size_tol * med
+    keep = [m for m, k in zip(masks, ok) if k]
+    votes = np.sum([(m > 0) for m in keep], axis=0)
+    return (votes * 2 > len(keep)).astype(np.uint8) * 255
+
+
 @dataclass
 class SideObjects:
     """Per-side object-centric state (SideContext.objs_meta + dynamic poses)."""
@@ -126,26 +148,120 @@ class SimPerception:
         self.W = env.W
         self.K_flip = mirror_intrinsics(self.K, self.W)
         self.debug: Dict[str, dict] = {}
+        self._setup_robustness(env)
+
+    # ------------------------------------------------------------------ robustness
+    def _setup_robustness(self, env):
+        """Per-episode perturbations; each has its own random stream derived from the episode seed."""
+        cfg = env.cfg
+        pc = cfg.get("perception", {}) or {}
+        self.mask_frames = int(pc.get("mask_frames", 1))
+        # "gt": rendered ground truth (+ mask_noise); "dinosam": the real DINO-SAM on the rendered RGB
+        self.mask_source = str(pc.get("mask_source", "gt"))
+        self._rgb_rng = rb.child_rng(env.rng, 5)
+        self.lift_reject = dict(pc.get("lift_reject", {}) or {})
+        cal = rb.params(cfg, "calib_error", rb.CALIB_ERROR)
+        self.calib_dT = rb.camera_error(rb.child_rng(env.rng, 1), cal) if cal["enabled"] else None
+        rb.set_policy_camera(env, self.calib_dT)
+        mn = rb.params(cfg, "mask_noise", rb.MASK_NOISE)
+        self.mask_noise = rb.MaskNoise(mn, rb.child_rng(env.rng, 2), list(env.obj_names)) if mn["enabled"] else None
+        dc = rb.params(cfg, "distractor_confusion", rb.DISTRACTOR_CONFUSION)
+        r6 = rb.child_rng(env.rng, 6)
+        self.distractor_bread = [bool(dc["enabled"] and r6.random() < float(dc["p"].get(d["type"], 0.0)))
+                                 for d in env.distractors]
+        da = rb.params(cfg, "depth_artifacts", rb.DEPTH_ARTIFACTS)
+        self.depth_artifacts = rb.DepthArtifacts(da, rb.child_rng(env.rng, 3), (env.H, env.W)) if da["enabled"] else None
+        lat = rb.params(cfg, "latency", rb.LATENCY)
+        self.latency = lat if lat["enabled"] else None
+        self._lat_rng = rb.child_rng(env.rng, 4)
+        self._last_clean = None
+        env.obs_history = None
+        if self.latency:
+            age_max = (float(lat["image_ms"]) + float(lat["jitter_ms"])) / 1000.0
+            env.obs_history = deque(maxlen=int(age_max / env.dt) + 4)
 
     # ------------------------------------------------------------------
-    def object_masks(self) -> Dict[str, np.ndarray]:
-        """obj1 = every bread on the table ("a piece of bread ."), obj2 = plate ("a plate .")."""
-        gt = self.env.render_segmentation()
+    def object_masks(self, gt: Optional[Dict[str, np.ndarray]] = None) -> Dict[str, np.ndarray]:
+        """One detector frame. obj1 = every bread on the table ("a piece of bread ."), obj2 = plate
+        ("a plate ."). Ground truth, or with perception.mask_noise DINO-SAM-like errors on top of it."""
+        gt = self.env.render_segmentation() if gt is None else gt
+        mn = self.mask_noise
+        if mn is not None:
+            gt = {name: mn.instance(name, mk) for name, mk in gt.items()}
         obj1 = np.zeros((self.env.H, self.env.W), np.uint8)
         for name, mk in gt.items():
             if name.startswith("bread"):
                 obj1 = cv2.bitwise_or(obj1, mk)
+        for dm, as_bread in zip(getattr(self, "_distractor_masks", []), self.distractor_bread):
+            if as_bread:                     # a bread-like distractor segmented as bread (whole object)
+                obj1 = cv2.bitwise_or(obj1, dm)
+        if mn is not None:
+            b = mn.blob(obj1.shape, table_rows=int(0.3 * self.env.H), anchors=list(gt.values()))
+            if b is not None:
+                obj1 = cv2.bitwise_or(obj1, b)
         return {"obj1": obj1, "obj2": gt["plate"]}
+
+    def detect_masks(self) -> Dict[str, np.ndarray]:
+        """The masks perception works with: one detector frame (the released pipeline), or the fusion
+        of perception.mask_frames frames (mitigation: drop empty / off-size frames, pixel majority vote)."""
+        if self.mask_source == "dinosam":
+            return self._dinosam_masks()
+        gt = self.env.render_segmentation()
+        if any(self.distractor_bread) and not hasattr(self, "_distractor_masks"):
+            self._distractor_masks = rb.distractor_masks(self.env, self.env.distractors)
+        if self.mask_frames <= 1:
+            return self.object_masks(gt)
+        frames = [self.object_masks(gt) for _ in range(self.mask_frames)]
+        return {k: fuse_masks([f[k] for f in frames]) for k in self.obj_keys}
+
+    def _dinosam_masks(self) -> Dict[str, np.ndarray]:
+        """The released DINO-SAM (Grounding-DINO + SAM2) on the rendered camera frame, robot included,
+        as on the real rig. With mask_frames > 1 each frame gets fresh sensor noise (2 grey levels)."""
+        from .dinosam_client import client
+        rgb = self.env.render_rgb()
+        frames = []
+        for _ in range(max(1, self.mask_frames)):
+            img = rgb
+            if self.mask_frames > 1:
+                img = np.clip(rgb + self._rgb_rng.normal(0, 2.0, rgb.shape), 0, 255).astype(np.uint8)
+            frames.append(client().segment(img))
+        if len(frames) == 1:
+            return frames[0]
+        return {k: fuse_masks([f[k] for f in frames]) for k in self.obj_keys}
 
     def _process_mask_to_3d(self, mask, depth_list, K):
         if mask is None or mask.max() == 0:
             return np.zeros((0, 3)), []
         k2d = self.kptsselector.select_points(mask)
+        lr = self.lift_reject
+        lift_mask = mask
+        if lr.get("erode_px"):
+            # lift from pixels at least erode_px inside the mask: a dilated mask or flying pixels at the
+            # silhouette then cannot pull a contour keypoint onto the table behind it
+            e = int(lr["erode_px"])
+            em = cv2.erode(mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * e + 1, 2 * e + 1)))
+            if np.count_nonzero(em) > 200:
+                lift_mask = em
         k3d = []
         for uv in k2d:
-            pt, _ = self.lifter.lift3d_for_multi_frames(uv, depth_list, mask, K)
+            pt, _ = self.lifter.lift3d_for_multi_frames(uv, depth_list, lift_mask, K)
             k3d.append(pt)
+        if lr.get("table_margin") is not None:
+            k3d = self._reject_off_object(k3d, float(lr["table_margin"]))
         return k3d, k2d
+
+    def _reject_off_object(self, k3d, margin: float):
+        """Drop lifted keypoints that sit on (or below) the table plane known from the calibration: a
+        bread keypoint lifted that low took its depth from the table, not the bread."""
+        Tcw = self.env.T_cam_in_world        # calibration (the robot's belief), not the true camera
+        out = []
+        for p in k3d:
+            if p is None or not np.isfinite(p).all():
+                out.append(p)
+                continue
+            zw = float(Tcw[2, :3] @ p + Tcw[2, 3])
+            out.append(p if zw > margin else None)
+        return out
 
     def _build_side_objs_meta(self, ok3d, ok2d) -> Tuple[dict, np.ndarray]:
         objs_meta, T_anchor, anchor_center = {}, np.eye(4), None
@@ -171,8 +287,9 @@ class SimPerception:
 
     def estimate_objects(self, sides: List[str], shared_context: bool = True) -> Dict[str, SideObjects]:
         """do_object_centric_bimanual (or the single-arm variant when sides == ['right'])."""
-        masks_full = self.object_masks()
-        depth_list = [self.env.render_depth(noise=self.depth_noise) for _ in range(self.n_init_frames)]
+        masks_full = self.detect_masks()
+        depth_list = [self.env.render_depth(noise=self.depth_noise, artifacts=self.depth_artifacts)
+                      for _ in range(self.n_init_frames)]
         split_x = int(self.W * self.split_x_ratio)
         out = {}
         bimanual = len(sides) > 1
@@ -199,8 +316,29 @@ class SimPerception:
 
     # ------------------------------------------------------------------
     def clean_background(self) -> np.ndarray:
-        """Robot-free render == the LaMa-inpainted frame of the real loop (BGR)."""
-        return self.env.render_rgb(hide_robot=True)
+        """Robot-free render == the LaMa-inpainted frame of the real loop (BGR). With
+        perception.latency the frame is image_ms + U(0, jitter_ms) old, and with p_drop the camera
+        did not deliver a new frame (the previous image is reused)."""
+        lat, env = self.latency, self.env
+        if lat is None:
+            return env.render_rgb(hide_robot=True)
+        rng = self._lat_rng
+        if self._last_clean is not None and rng.random() < float(lat["p_drop"]):
+            return self._last_clean
+        age = (float(lat["image_ms"]) + rng.uniform(0.0, float(lat["jitter_ms"]))) / 1000.0
+        qpos = None
+        hist = env.obs_history
+        if hist:
+            t_want = env.t - age
+            qpos = hist[0][1]
+            for t_h, q_h in hist:
+                if t_h <= t_want + 1e-9:
+                    qpos = q_h
+                else:
+                    break
+        img = env.render_rgb(hide_robot=True, qpos=qpos) if qpos is not None else env.render_rgb(hide_robot=True)
+        self._last_clean = img
+        return img
 
     def make_side_image(self, side: str, so: SideObjects, clean_bg: np.ndarray, arm, is_grasp: bool,
                         draw_obj_kpts: bool = True, draw_arm_kpts: bool = True) -> np.ndarray:

@@ -57,6 +57,50 @@ python simulation/scripts/compare_params.py --sets tuned=simulation/configs/tune
 
 Headless rendering uses `MUJOCO_GL=egl` (set automatically).
 
+## Evaluation protocol
+
+A success rate here is a proportion over a few dozen random scenes, so it carries sampling
+error. The scripts report it (`humanego_sim/stats.py`):
+
+* **Confidence intervals.** `evaluate.py` and `compare_params.py` print each rate with its 95 %
+  Wilson score interval. Per-arm rates count two arms per scene, and those two outcomes are
+  not independent. `compare_params.py` therefore also prints a scene-bootstrap interval that
+  resamples whole scenes; when the two intervals differ, quote the bootstrap one.
+* **Paired comparisons.** `compare_params.py` runs every set on the same scenes and tests each
+  against the first set. It reports an exact McNemar test on the arms whose outcome differs
+  (served with A and failed with B, or the reverse), and a paired scene-bootstrap 95 %
+  interval of the per-arm difference. "A beats B" means McNemar p < 0.05 *and* a bootstrap
+  interval that excludes 0. Repeated runs of the same settings differ by 3–4 points because
+  the policy is nondeterministic on the GPU. The paired test counts that noise as discordant
+  arms, so it does not report it as an effect.
+* **Scene sets.** `--seed` (with `--n`) selects a scene set. Seeds **7777 and 8888 are for
+  development**: select and tune parameters on both. Seeds **9001–9099 are reserved for final
+  reports**. Never pick parameters on them, and never re-tune after seeing their results. The
+  scripts refuse these seeds unless you pass `--final`. `--seed 7777 8888` runs both
+  development sets and pools them for the paired test.
+* **Sample size.** Headline numbers use **≥ 100 scenes per robot** (200 arms). The half-width
+  of the 95 % interval on the per-arm rate is:
+
+  | scenes (arms) | at 60 % | at 80 % | at 90 % |
+  |---|---|---|---|
+  | 24 (48) | ±13 | ±11 | ±9 |
+  | 32 (64) | ±12 | ±10 | ±8 |
+  | 64 (128) | ±8 | ±7 | ±5 |
+  | 100 (200) | ±7 | ±6 | ±4 |
+
+  So a 32-scene comparison of two independent runs resolves only differences of about 15
+  points. Smaller differences need the paired test on the same scenes.
+
+```bash
+GA='control.grasp_assist={"enabled": true}'
+T=simulation/configs/tuned/trossen_wxai.json
+python simulation/scripts/compare_params.py --sets tuned=$T fused=$T@'{"perception": {"mask_frames": 5}}' \
+    --set "$GA" --seed 7777 8888
+```
+
+A set is `name=params.json`, `name=-` (production settings), `name=@'<JSON overrides>'`, or a
+params file plus overrides (`name=params.json@'<JSON>'`), as above.
+
 ## What is simulated, and how faithfully
 
 | Real system | Simulator |
