@@ -43,5 +43,64 @@
   "control.idle_dist_threshold": 0.07643570002164041,
   "control.idle_time_limit": 2.9055531946577107
  },
- "note": "Controller-only re-tune (autotune trossen_v7) on physics v2 at the measured table height (rig.cam_height 0.366) and the 14.5 cm croissant, starting from the soft_v6 + height_max settings. The previous settings score 0.719 / 0.656 per arm on the same scenes (seeds 7777 / 8888); paired on 8888: +23 pts, McNemar p = 0.0015."
+ "note": "Controller-only re-tune (autotune trossen_v7) on physics v2 at the measured table height (rig.cam_height 0.366) and the 14.5 cm croissant, starting from the soft_v6 + height_max settings. The previous settings score 0.719 / 0.656 per arm on the same scenes (seeds 7777 / 8888); paired on 8888: +23 pts, McNemar p = 0.0015.",
+ "final": {
+  "n_scenes": 100,
+  "seed": 9001,
+  "per_arm": 0.805,
+  "per_side": {
+   "right": 0.88,
+   "left": 0.73
+  },
+  "both": 0.64,
+  "per_arm_wilson95": [
+   0.745,
+   0.854
+  ],
+  "label": "reserved test set"
+ },
+ "final_production": {
+  "n_scenes": 100,
+  "seed": 9001,
+  "per_arm": 0.605,
+  "per_side": {
+   "right": 0.74,
+   "left": 0.47
+  },
+  "both": 0.27,
+  "per_arm_wilson95": [
+   0.536,
+   0.67
+  ]
+ },
+ "final_robustness": {
+  "clean": {
+   "per_arm": 0.805,
+   "wilson95": [
+    0.745,
+    0.854
+   ]
+  },
+  "masks": {
+   "per_arm": 0.845,
+   "wilson95": [
+    0.788,
+    0.889
+   ]
+  },
+  "dinosam": {
+   "per_arm": 0.805,
+   "wilson95": [
+    0.745,
+    0.854
+   ]
+  },
+  "all": {
+   "per_arm": 0.78,
+   "wilson95": [
+    0.718,
+    0.832
+   ]
+  }
+ }
 }

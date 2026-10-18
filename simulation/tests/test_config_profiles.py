@@ -114,9 +114,12 @@ def test_tuned_file_schema(robot):
     assert t["robot"] == robot and robot in ROBOTS
     assert t["params"] and all(isinstance(k, str) and k.count(".") >= 1 for k in t["params"])
     assert t["requires"] == {"control.grasp_assist.enabled": True}
-    for k in ("held_out", "held_out_2"):
+    for k in ("held_out", "held_out_2", "final", "final_production"):
+        if k not in t and k != "held_out":       # held_out_2 / the reserved test are optional
+            continue
         h = t[k]
-        assert h["seed"] in (7777, 8888) and h["n_scenes"] > 0
+        seeds = range(9001, 9100) if k.startswith("final") else (7777, 8888)   # dev vs reserved seeds
+        assert h["seed"] in seeds and h["n_scenes"] > 0
         for v in [h["per_arm"], h["both"], *h["per_side"].values()]:
             assert 0.0 <= v <= 1.0
     info = profiles.profile_info("tuned", robot)

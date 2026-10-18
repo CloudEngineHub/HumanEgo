@@ -143,6 +143,13 @@ def write_manifest(configs, tuning_robot="trossen_wxai", media=None):
     for c in cfgs:
         c["live"] = os.path.exists(os.path.join(WEB, "assets", "live", c["model"], "spec.json")) and \
             os.path.exists(os.path.join(WEB, "assets", "policy", "serve_bread_meta.json"))
+        # refresh the quoted numbers from configs/tuned (same parameters: same autotune run), e.g. after
+        # the reserved test set was run on a kept build (rebuild_site.py --skip-build)
+        p = c.get("profile")
+        if isinstance(p, dict) and p.get("profile") == "tuned":
+            fresh = profile_info("tuned", c["robot"])
+            if fresh.get("autotune_run") == p.get("autotune_run"):
+                c["profile"] = fresh
     # the tuning plot shows the run behind the profile the default robot's rollouts use
     prof = next((c.get("profile") for c in cfgs if c["robot"] == tuning_robot and c.get("profile")), None)
     tuning = None

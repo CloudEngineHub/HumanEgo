@@ -85,7 +85,7 @@ def profile_info(profile: Optional[str], robot: str) -> dict:
         return {"profile": "production", "source": "configs/serve_bread.yaml"}
     t = load_tuned(robot)
     out = {"profile": profile, "source": os.path.relpath(tuned_path(robot), SIM_ROOT)}
-    for k in ("autotune_run", "chosen", "note", "held_out", "held_out_2"):
+    for k in ("autotune_run", "chosen", "note", "held_out", "held_out_2", "final", "final_production"):
         if k in t:
             out[k] = t[k]
     return out

@@ -44,17 +44,20 @@ Headless rendering uses `MUJOCO_GL=egl` (set automatically).
 
 ## Results
 
-Per-arm success = bread released and resting on the plate, on randomized held-out scenes
-(paper protocol, soft bread). Numbers from `configs/tuned/<robot>.json`, written by
-`autotune_validate.py` (this table is generated: `python -m humanego_sim.web_manifest`;
-a test fails when it drifts from the files):
+Per-arm success = bread released and resting on the plate, on randomized scenes (paper protocol,
+soft bread, sourced physics, table height measured from the real video). The headline column is the
+reserved test set (seeds 9001+, 100 scenes per robot, never used to pick parameters), with the
+production controller on the same scenes for comparison; the dev seeds are where the parameters were
+selected. Numbers from `configs/tuned/<robot>.json` (this table is generated:
+`python -m humanego_sim.web_manifest`; a test fails when it drifts from the files). How the upgrade of
+2026-10-18 got here: [`docs/upgrade/report.md`](docs/upgrade/report.md).
 
 <!-- results:start -->
-| Robot | Controller (`--profile tuned`) | Per arm, seed 7777 | Per arm, seed 8888 | Right / left (7777) | Both served (7777) |
-|---|---|---|---|---|---|
-| Trossen WidowX AI | `soft_v6` + grasp skill | 91% (32 scenes) | 94% (32 scenes) | 94% / 88% | 84% |
-| Franka Panda | `franka_v3` + grasp skill | 62% (24 scenes) | 60% (24 scenes) | 88% / 38% | 33% |
-| UR5e + Robotiq 2F-85 | `ur5e_v3` + grasp skill | 88% (24 scenes) | 81% (24 scenes) | 92% / 83% | 79% |
+| Robot | Controller (`--profile tuned`) | Per arm, reserved test [95 % CI] | Right / left | Both served | Production controller, same scenes (per arm / both) | Dev seeds (per arm) |
+|---|---|---|---|---|---|---|
+| Trossen WidowX AI | `trossen_v7` + grasp skill | **80%** [74%, 85%] (100 scenes, seed 9001) | 88% / 73% | 64% | 60% / 27% | 83% (seed 7777, 32 scenes) / 89% (seed 8888, 32 scenes) |
+| Franka Panda | `franka_panda_v4` + grasp skill | **76%** [69%, 81%] (100 scenes, seed 9001) | 88% / 63% | 57% | 46% / 17% | 73% (seed 7777, 24 scenes) / 73% (seed 8888, 24 scenes) |
+| UR5e + Robotiq 2F-85 | `ur5e_v3` + grasp skill | **76%** [70%, 81%] (100 scenes, seed 9001) | 99% / 53% | 53% | 57% / 22% | 83% (seed 7777, 24 scenes) |
 <!-- results:end -->
 
 The real rig's production controller (`--profile production`) scores much lower on the same

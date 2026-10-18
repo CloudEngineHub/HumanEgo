@@ -41,5 +41,57 @@
   },
   "both": 0.458
  },
- "note": "Controller-only re-tune (autotune franka_panda_v4) on physics v2 at the measured table height and the 14.5 cm croissant, from franka_v3. Previous settings on the same scenes: 0.604 / 0.604 per arm (seeds 7777 / 8888); the +12.5 pts gain repeats on both seeds but is not significant on either alone (n = 24, McNemar p = 0.24 on 8888)."
+ "note": "Controller-only re-tune (autotune franka_panda_v4) on physics v2 at the measured table height and the 14.5 cm croissant, from franka_v3. Previous settings on the same scenes: 0.604 / 0.604 per arm (seeds 7777 / 8888); the +12.5 pts gain repeats on both seeds but is not significant on either alone (n = 24, McNemar p = 0.24 on 8888).",
+ "final": {
+  "n_scenes": 100,
+  "seed": 9001,
+  "per_arm": 0.755,
+  "per_side": {
+   "right": 0.88,
+   "left": 0.63
+  },
+  "both": 0.57,
+  "per_arm_wilson95": [
+   0.691,
+   0.809
+  ],
+  "label": "reserved test set"
+ },
+ "final_production": {
+  "n_scenes": 100,
+  "seed": 9001,
+  "per_arm": 0.46,
+  "per_side": {
+   "right": 0.66,
+   "left": 0.26
+  },
+  "both": 0.17,
+  "per_arm_wilson95": [
+   0.392,
+   0.529
+  ]
+ },
+ "final_robustness": {
+  "clean": {
+   "per_arm": 0.755,
+   "wilson95": [
+    0.691,
+    0.809
+   ]
+  },
+  "masks": {
+   "per_arm": 0.715,
+   "wilson95": [
+    0.649,
+    0.773
+   ]
+  },
+  "all": {
+   "per_arm": 0.645,
+   "wilson95": [
+    0.577,
+    0.708
+   ]
+  }
+ }
 }

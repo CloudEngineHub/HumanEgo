@@ -43,7 +43,7 @@ def summary_rows(configs: List[dict]) -> List[dict]:
                "profile": prof.get("profile", "production")}
         if prof.get("autotune_run"):
             row["autotune_run"] = prof["autotune_run"]
-        ho = [prof[k] for k in ("held_out", "held_out_2") if k in prof]
+        ho = [prof[k] for k in ("final", "held_out", "held_out_2") if k in prof]
         if ho:
             row["held_out"] = [{"seed": h["seed"], "n_scenes": h["n_scenes"], "per_arm": h["per_arm"],
                                 "right": h["per_side"].get("right"), "left": h["per_side"].get("left"),
@@ -62,7 +62,7 @@ def results_note(configs: List[dict], robot_labels: Dict[str, str]) -> str:
         name = robot_labels.get(robot, robot)
         p = prof.get("profile", "production")
         txt = f"<b>{name}</b>: {PROFILE_TEXT.get(p, p)}"
-        ho = [prof[k] for k in ("held_out", "held_out_2") if k in prof]
+        ho = [prof[k] for k in ("final", "held_out", "held_out_2") if k in prof]
         if ho:
             txt += (f" (<code>{prof.get('autotune_run', '?')}</code>; held-out per arm "
                     + " / ".join(f"<b>{pct(h['per_arm'])}</b> on {h['n_scenes']} scenes, seed {h['seed']}" for h in ho)
@@ -92,12 +92,15 @@ def tuning_section(tuned: Optional[dict], runs_dir: Optional[str] = None) -> Opt
         it = json.load(open(p))
         batches.append({"scores": [round(c["stats"]["per_side_success_rate"], 3) for c in it["candidates"]],
                         "action": it.get("decision", {}).get("action")})
-    h = tuned["held_out"]
+    h = tuned.get("final") or tuned["held_out"]      # the reserved test set when it has been run
     note = (f"Grey dots: candidates in each batch (per-arm success on shared random scenes); orange: best so far. "
             f"On {h['n_scenes']} held-out scenes (seed {h['seed']}) the <code>{tuned['autotune_run']}</code> controller "
             f"with its <b>grasp skill</b> serves <b>{pct(h['per_arm'])}</b> per arm (right {pct(h['per_side'].get('right'))}, "
             f"left {pct(h['per_side'].get('left'))}), both breads {pct(h['both'])}")
-    if "held_out_2" in tuned:
+    if "final" in tuned and "final_production" in tuned:
+        note += (f"; the production controller settings serve {pct(tuned['final_production']['per_arm'])} per arm "
+                 f"on the same scenes")
+    elif "held_out_2" in tuned:
         h2 = tuned["held_out_2"]
         note += f"; {pct(h2['per_arm'])} per arm on a second set (seed {h2['seed']})"
     return {"run": tuned["autotune_run"], "robot": tuned.get("robot"), "batches": batches, "note": note + "."}
@@ -188,20 +191,32 @@ def validate(man: dict, web: Optional[str] = None) -> List[str]:
 
 def readme_results() -> str:
     """The README's results table, from configs/tuned/*.json (tests/test_web_build.py keeps the README
-    in sync: python -m humanego_sim.web_manifest prints it)."""
+    in sync: python -m humanego_sim.web_manifest prints it). Headline: the reserved test set (seeds
+    9001+, never used to pick parameters), tuned vs production on the same scenes; then the dev seeds."""
     from .profiles import TUNED_DIR
     from .robots import ROBOTS
-    rows = ["| Robot | Controller (`--profile tuned`) | Per arm, seed 7777 | Per arm, seed 8888 | Right / left (7777) | Both served (7777) |",
-            "|---|---|---|---|---|---|"]
+    rows = ["| Robot | Controller (`--profile tuned`) | Per arm, reserved test [95 % CI] | Right / left | Both served "
+            "| Production controller, same scenes (per arm / both) | Dev seeds (per arm) |",
+            "|---|---|---|---|---|---|---|"]
     for robot in ROBOTS:
         p = os.path.join(TUNED_DIR, f"{robot}.json")
         if not os.path.exists(p):
             continue
         t = json.load(open(p))
-        h, h2 = t["held_out"], t.get("held_out_2")
-        rows.append(f"| {ROBOTS[robot].label} | `{t['autotune_run']}` + grasp skill | {pct(h['per_arm'])} ({h['n_scenes']} scenes) | "
-                    + (f"{pct(h2['per_arm'])} ({h2['n_scenes']} scenes)" if h2 else "—")
-                    + f" | {pct(h['per_side'].get('right'))} / {pct(h['per_side'].get('left'))} | {pct(h['both'])} |")
+        dev = " / ".join(f"{pct(t[k]['per_arm'])} (seed {t[k]['seed']}, {t[k]['n_scenes']} scenes)"
+                         for k in ("held_out", "held_out_2") if k in t)
+        f, fp = t.get("final"), t.get("final_production")
+        if f:
+            ci = f.get("per_arm_wilson95")
+            head = (f"**{pct(f['per_arm'])}**" + (f" [{pct(ci[0])}, {pct(ci[1])}]" if ci else "")
+                    + f" ({f['n_scenes']} scenes, seed {f['seed']})")
+            side = f"{pct(f['per_side'].get('right'))} / {pct(f['per_side'].get('left'))}"
+            both = pct(f["both"])
+            prod = f"{pct(fp['per_arm'])} / {pct(fp['both'])}" if fp else "—"
+        else:
+            h = t["held_out"]
+            head, side, both, prod = "—", f"{pct(h['per_side'].get('right'))} / {pct(h['per_side'].get('left'))}", pct(h["both"]), "—"
+        rows.append(f"| {ROBOTS[robot].label} | `{t['autotune_run']}` + grasp skill | {head} | {side} | {both} | {prod} | {dev} |")
     return "\n".join(rows)
 
 

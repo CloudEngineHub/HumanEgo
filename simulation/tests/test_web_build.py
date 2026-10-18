@@ -176,7 +176,8 @@ def test_manifest_numbers_come_from_data():
         assert web_manifest.pct(t["held_out"]["per_arm"]) in man["summary_note"]
         assert t["autotune_run"] in man["summary_note"]
         r = next(r for r in man["summary"] if r["robot"] == robot)
-        assert r["held_out"][0]["per_arm"] == t["held_out"]["per_arm"] and r["profile"] == "tuned"
+        first = t.get("final") or t["held_out"]          # the reserved test set leads when it has been run
+        assert r["held_out"][0]["per_arm"] == first["per_arm"] and r["profile"] == "tuned"
     assert sum(r.get("featured", False) for r in man["configs"][0]["rollouts"]) == 1
     assert man["configs"][0]["rollouts"][0]["scene"]["bread_left"][2] == 85.1235      # rounded for size
 
@@ -206,7 +207,8 @@ def test_tuning_section_from_run(tmp_path):
     tuned = dict(profiles.load_tuned("trossen_wxai"), autotune_run="soft_vX")
     t = web_manifest.tuning_section(tuned, str(tmp_path))
     assert [b["scores"] for b in t["batches"]] == [[0.5], [0.6]]
-    assert web_manifest.pct(tuned["held_out"]["per_arm"]) in t["note"] and "41%" not in t["note"]
+    h = tuned.get("final") or tuned["held_out"]     # the reserved test set once it has been run
+    assert web_manifest.pct(h["per_arm"]) in t["note"] and "41%" not in t["note"]
     assert web_manifest.tuning_section(dict(tuned, autotune_run="nope"), str(tmp_path)) is None
 
 

@@ -8,12 +8,12 @@
  "held_out": {
   "n_scenes": 24,
   "seed": 7777,
-  "per_arm": 0.875,
+  "per_arm": 0.833,
   "per_side": {
-   "right": 0.917,
-   "left": 0.833
+   "right": 0.958,
+   "left": 0.708
   },
-  "both": 0.792
+  "both": 0.667
  },
  "params": {
   "control.grasp_assist.lateral_gain": 0.9524575250744156,
@@ -34,15 +34,57 @@
   "control.release.margin": 0.03,
   "control.release.lift": 0.08
  },
- "note": "release: set the bread down 3 cm above its resting height, open, lift the open hand 8 cm, then go home",
- "held_out_2": {
-  "n_scenes": 24,
-  "seed": 8888,
-  "per_arm": 0.812,
+ "note": "release: set the bread down 3 cm above its resting height, open, lift the open hand 8 cm, then go home Re-checked on physics v2 at the measured table height: the re-tune (ur5e_v4) found nothing better (best candidate 0.833 = current 0.833 per arm, seed 7777), so these parameters are kept.",
+ "final": {
+  "n_scenes": 100,
+  "seed": 9001,
+  "per_arm": 0.76,
   "per_side": {
-   "right": 0.958,
-   "left": 0.667
+   "right": 0.99,
+   "left": 0.53
   },
-  "both": 0.625
+  "both": 0.53,
+  "per_arm_wilson95": [
+   0.696,
+   0.814
+  ],
+  "label": "reserved test set"
+ },
+ "final_production": {
+  "n_scenes": 100,
+  "seed": 9001,
+  "per_arm": 0.575,
+  "per_side": {
+   "right": 0.86,
+   "left": 0.29
+  },
+  "both": 0.22,
+  "per_arm_wilson95": [
+   0.506,
+   0.641
+  ]
+ },
+ "final_robustness": {
+  "clean": {
+   "per_arm": 0.76,
+   "wilson95": [
+    0.696,
+    0.814
+   ]
+  },
+  "masks": {
+   "per_arm": 0.75,
+   "wilson95": [
+    0.686,
+    0.805
+   ]
+  },
+  "all": {
+   "per_arm": 0.765,
+   "wilson95": [
+    0.702,
+    0.818
+   ]
+  }
  }
 }
