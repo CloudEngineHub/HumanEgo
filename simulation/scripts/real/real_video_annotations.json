@@ -1,0 +1,29 @@
+{
+ "about": "Frame-level annotations of the real serve_bread rollouts (third-person video). Frames are 60 fps video frames of the named file; the burned-in speed labels (x8 / x16) are NOT trusted (see real_vs_sim.md). Each rollout is calibrated with motions of fixed duration in the real code: wrap-up = open_gripper(blocking, 1.0 s) + go_home(3.0 s); go_initial = 2.5 s; left arm activation 6.0 s after the right. 'release' = first frame with the gripper visibly open / bread free; 'home' = first frame at the folded home pose; 'grasp' = fingers closed on the bread; 'lift' = bread clear of the table; 'move' = first motion from the ready (initial) pose. Annotated by stepping through every frame (A: website/static/videos/serve_bread.mp4; B*: website/static/videos/cross_condition_3.mp4, frame numbers are full_demo.mp4 frames = cross_condition_3 frame + 3956).",
+ "files": {
+  "A": "AriaMimic/website/static/videos/serve_bread.mp4",
+  "B": "AriaMimic/website/static/videos/cross_condition_3.mp4 (fd = k + 3956)"
+ },
+ "rollouts": {
+  "A": {"label": "x8", "layout": "canonical bimanual (R croissant, L danish)", "fps": 60,
+        "rulers": {"wrapup_R": [67.5, 77.0], "wrapup_L": [97.5, 107.5]},
+        "right": {"grasp": 14, "lift": 20, "release": 67.5, "home": 77.0},
+        "left": {"move": 25, "grasp": 34, "lift": 44, "release": 97.5, "home": 107.5},
+        "notes": "starts mid-reach (right arm already descending). Both arms set the bread down before opening: right croissant touches the plate at k66, left danish laid on the croissant at k96-97. Both grasp near the END of the bread (fingers over the outer ~30 % of its length). Peak lift above the table, from the plate (24.5 cm = 204 px) as scale: right croissant ~25 cm (k36), left danish ~20 cm (k64)."},
+  "B1": {"label": "x16", "layout": "single arm, right, croissant", "fps": 60,
+         "rulers": {"initial": [3987, 3989], "wrapup_R": [4016, 4018]},
+         "right": {"move": 3991.5, "grasp": 3998, "lift": 3999, "release": 4016, "home": 4018},
+         "notes": "rulers only 2 frames long: speed factor 75-100 +- 50 %"},
+  "B5": {"label": "x16", "layout": "canonical bimanual", "fps": 60,
+         "rulers": {"initial": [4249, 4252.5], "wrapup_R": [4273.5, 4278], "left_delay": [4258.5, 4264.5]},
+         "right": {"move": 4258.5, "grasp": 4261, "lift": 4262, "release": 4273.5, "home": 4278},
+         "left": {"move": 4264.5, "grasp": 4266, "lift": 4267.5, "release": 4281.5, "home": null},
+         "notes": "jump cut at 4284/4285 hides the left arm's arrival home"},
+  "B6": {"label": "x16", "layout": "swapped breads, plate raised on a box", "fps": 60,
+         "rulers": {"initial": [4339, 4342.5], "wrapup_R": [4362.5, 4366.5], "wrapup_L": [4369, 4372.5], "left_delay": [4347.5, 4354.5]},
+         "right": {"move": 4347.5, "grasp": 4349.5, "lift": 4351, "release": 4362.5, "home": 4366.5},
+         "left": {"move": 4354.5, "grasp": 4356, "lift": 4357.5, "release": 4369, "home": 4372.5},
+         "notes": "right arm takes the danish, left the croissant"}
+ },
+ "ruler_seconds": {"wrapup": [3.0, 4.05], "initial": [2.0, 2.5], "left_delay": [6.0, 7.0]}
+}

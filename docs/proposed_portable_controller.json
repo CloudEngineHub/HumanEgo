@@ -1,0 +1,10 @@
+{
+ "params": {
+  "control.alpha": 0.17517882899671153,
+  "control.duration_smooth_param": 2.0,
+  "control.grasp_threshold": 0.6474502907426785,
+  "control.idle_dist_threshold": 0.08345024627967582,
+  "control.idle_time_limit": 2.6519472206454893
+ },
+ "note": "trossen tuned values restricted to knobs that exist in the real Control.yaml"
+}
