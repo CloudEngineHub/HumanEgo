@@ -95,6 +95,14 @@ export async function runParity({ mj, model, data, spec, trace, mode = 'sync', p
                         pos: e.out.pos.map(toArr), o6d: e.out.o6d.map(toArr) });
     },
   };
+  if (mode !== 'full') {        // re-perception before a re-grasp: Python's camera observations, replayed
+    log.reperceive = [];
+    ep.reperceiveSource = (side, t) => {
+      const r = (trace.reperceive || []).find((q) => q.side === side && Math.abs(q.t - t) < 1e-6);
+      log.reperceive.push({ side, t, py: r ? (r.so ? 'objs' : 'none') : 'missing' });
+      return r && r.so ? objsFromTrace({ [side]: r.so })[side] : null;
+    };
+  }
   ep.reset({}, 0, { state: trace.init_state, objs: mode === 'full' ? null : objsFromTrace(trace.perception) });
   log.geoms = ep.geoms;
   if (mode === 'full') {

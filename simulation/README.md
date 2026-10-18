@@ -452,6 +452,21 @@ python simulation/scripts/robust_perception.py --n 32 --conditions masks depth c
 The final report on the reserved scene set (100 scenes per robot) is run once the simulator's
 physics is final; see `docs/upgrade/robust.md`.
 
+## Further grasp-skill options (off)
+
+`control.grasp_assist` also has options for real-robot work, all off by default and none adopted in the
+tuned profiles (no significant gain on physics v2, both dev seeds; the slow approach costs the UR5e 20
+points). Details and numbers: `docs/upgrade/controller.md`.
+
+* `reperceive`: before a re-grasp, re-run the released perception once the bread is visible and still
+  (it may have been pushed or dropped elsewhere); a bread found on the plate counts as served.
+* `timeout_near` / `approach_max`: the approach timeout counts only near the pinch point.
+* `grip_check`: `q` (default: gripper opening / pad gap), `effort` (the gripper motor's effort, what
+  trossen_arm and the 2F-85 report) or `touch` (finger-pad contact force: a sensor the real grippers do not
+  have), with one-pad and slip (force collapse) detection.
+* `yaw`: turn the hand so the fingers close across the bread's short axis (`align`, or `fit` the hand's opening).
+* `slow_dist` / `slow_speed`: slow final approach. `release.open_time` / `release.settle`: gentler release.
+
 ## Live mode: the policy in your browser
 
 `web/js/live/` is a line-by-line port of the Python stack to JavaScript:

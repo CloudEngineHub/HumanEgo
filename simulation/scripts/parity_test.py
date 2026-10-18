@@ -167,6 +167,13 @@ def compare(py: dict, js: dict, sides, tol_mm: float = 1.0, tol_deg: float = 0.5
         if q["gv"] != r["gv"] or q["latched"] != r["latched"] or q["lift"] != r["lift"] or d_ict > 1e-3:
             pol_mis.append({"t": r["t"], "side": r["side"], "gv": [q["gv"], r["gv"]], "latched": [q["latched"], r["latched"]],
                             "lift": [q["lift"], r["lift"]], "ict": d_ict})
+    # re-perception before a re-grasp: the browser must ask at exactly Python's (side, time)s
+    rp_mis = [r for r in js.get("reperceive", []) if r["py"] == "missing"]
+    n_py = len(py.get("reperceive", []))
+    if len(js.get("reperceive", [])) != n_py or rp_mis:
+        pol_mis.insert(0, {"t": rp_mis[0]["t"] if rp_mis else None, "side": rp_mis[0]["side"] if rp_mis else None,
+                           "what": f"re-perception calls py {n_py} / browser {len(js.get('reperceive', []))}"})
+    rep["n_reperceive"] = [n_py, len(js.get("reperceive", []))]
     rep["policy_mismatch"] = pol_mis[:20]
     rep["n_policy"] = [len(py["policy"]), len(js["policy"])]
     rep["first"] = first

@@ -63,6 +63,7 @@ class RobotSpec:
     # whose driver joint closes almost fully around a bread - the real one reports object detection)
     grip_sense: str = "q"
     finger_gap_closed: float = 0.0      # m between the finger bodies when closed on air
+    max_opening: float = 0.08           # m between the finger pads when fully open (grasp skill: will the bread fit)
     kp_scale: Optional[float] = None    # None -> physics.arm_kp_scale from the config
     attach: List[dict] = field(default_factory=list)   # sub-models attached to a site, e.g. a gripper
     tool_site_spec: Optional[dict] = None   # {"body":..., "pos":[...]} adds the tool site if the MJCF has none
@@ -102,6 +103,7 @@ ROBOTS: Dict[str, RobotSpec] = {
         },
         home_joints=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         gripper_force=12.0,
+        max_opening=0.088,
         reach=0.70,
         finger_bodies=["gripper_left", "gripper_right"],
         web_name="trossen_wxai",
@@ -132,6 +134,7 @@ ROBOTS: Dict[str, RobotSpec] = {
         # (the real Franka Hand: 70 N continuous). A stiffer servo (physics.robot_gripper.franka_panda
         # .kp_scale 2-25) did not raise soft-bread success, so the Menagerie servo is kept.
         gripper_force=40.0,
+        max_opening=0.08,
         reach=0.85,
         finger_bodies=["left_finger", "right_finger"],
         gripper_joint="finger_joint1",
@@ -158,6 +161,7 @@ ROBOTS: Dict[str, RobotSpec] = {
         initial_joints={},
         home_joints=[0.0, -1.9, 1.9, -1.571, -1.571, 0.0],
         gripper_force=40.0,          # Menagerie caps the 2F-85 tendon at +-5; the real gripper squeezes far harder
+        max_opening=0.085,
         reach=0.85,
         finger_bodies=["gripper/left_pad", "gripper/right_pad"],
         grip_sense="gap",

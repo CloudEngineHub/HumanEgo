@@ -31,7 +31,7 @@ import torch
 from .controller import SimController
 from .driver import T_to_p
 from .env import REPO_ROOT, ServeBreadSim
-from .perception import SideObjects, SimPerception, mirror_pose
+from .perception import SideObjects, SimPerception, mirror_pose, split_mask_by_x
 
 for _p in (os.path.join(REPO_ROOT, "inference"), REPO_ROOT):
     if _p not in sys.path:
@@ -173,7 +173,77 @@ class EpisodeRunner:
             # place height: bread centre height on the table + the plate's floor (rim keypoints - 1.35 cm)
             floor = float(plate[:, 2].mean()) - 0.0135 if plate is not None else 0.0085
             out["place_z"] = float(c[2]) + max(floor, 0.0)
+            if plate is not None and len(plate) >= 3:          # the plate's centre and rim radius (horizontal)
+                pc = plate[:, :2].mean(0)
+                out["plate"] = {"c": pc.tolist(), "r": float(np.linalg.norm(plate[:, :2] - pc, axis=1).mean())}
         return out
+
+    def _side_mask(self, side: str, masks: Optional[dict] = None) -> np.ndarray:
+        """This arm's bread in the detector's mask (robot occluding, as DINO-SAM sees it)."""
+        per = self.perception
+        full = (masks or per.detect_masks())["obj1"]
+        if len(self.env.sides) > 1:
+            full = split_mask_by_x(full, int(per.W * per.split_x_ratio))[side]
+        return full > 0
+
+    def _reperceive(self, side: str, ctx, controller, geoms: dict) -> bool:
+        """Before a re-grasp: run the released perception again for this arm once its bread is visible and still
+        (the failed grasp may have pushed it, or it dropped elsewhere) and update the grasp skill's bread geometry
+        and, with grasp_assist.reperceive = "policy", the policy's object state (the bread's pose and keypoints;
+        the plate keeps its t = 0 keypoints, its frame re-oriented to the new bread centre as at t = 0)."""
+        so = self._reperceive_observe(side)
+        if self.trace is not None:
+            self.trace.setdefault("reperceive", []).append({"t": round(controller.t, 6), "side": side, "so": None if so is None else {
+                "meta": {k: {"T_static": np.asarray(v["T_obj_in_cam_static"], float).tolist(),
+                             "kpts_local": np.asarray(v["kpts_local"], float).tolist()} for k, v in so.objs_meta.items()},
+                "dynamic": {k: np.asarray(v, float).tolist() for k, v in so.dynamic_obj_poses.items()},
+                "T_anchor_static": np.asarray(so.T_anchor_in_cam_static, float).tolist()}})
+        return so is not None and self._reperceive_apply(side, so, ctx, controller, geoms)
+
+    def _reperceive_observe(self, side: str):
+        """The camera part: None while the bread is hidden or moving, else the released perception's result."""
+        ga = self.cc.get("grasp_assist", {}) or {}
+        a0 = self._mask_area0.get(side, 0)
+        m, prev = self._side_mask(side), self._rp_mask.get(side)
+        self._rp_mask[side] = m
+        if a0 <= 0 or np.count_nonzero(m) < float(ga.get("reperceive_visible", 0.6)) * a0:
+            return None                                       # still hidden under the hand: try again next tick
+        if prev is None or np.count_nonzero(m & prev) < float(ga.get("reperceive_iou", 0.9)) * np.count_nonzero(m | prev):
+            return None                                       # still moving (e.g. bouncing after a drop)
+        self._rp_mask[side] = None
+        return self.perception.estimate_objects(self.env.sides, shared_context=True)[side]
+
+    def _reperceive_apply(self, side: str, so, ctx, controller, geoms: dict) -> bool:
+        g = self._perceived_geometry(side, so)
+        b = g.get("bread")
+        if not b or b["c"][2] > 0.06:                          # nothing usable, or not lying on the table
+            return False
+        pl = geoms[side].get("plate")
+        if pl and np.linalg.norm(np.subtract(b["c"][:2], pl["c"])) < pl["r"]:
+            # it slipped out over the plate and lies on it: served, release and go home instead of re-grasping
+            controller.reperceive[side] = None
+            controller.events[side].append((round(controller.t, 2), "reperceive:on_plate"))
+            ctx.is_done, ctx.done_reason = True, "dropped_on_plate"
+            return True
+        geoms[side]["bread"] = b
+        controller.reperceived(side, b)
+        if controller.ga_reperceive == "policy" and self.anchor_key in so.objs_meta:
+            from preprocess.OrientAnything import estimate_frame_pca1
+            m1 = so.objs_meta[self.anchor_key]
+            obj, st = ctx.objs, ctx.hand
+            obj.objs_meta[self.anchor_key] = m1
+            obj.T_anchor_in_cam_static = m1["T_obj_in_cam_static"].copy()
+            obj.dynamic_obj_poses[self.anchor_key] = m1["T_obj_in_cam_static"].copy()
+            for k, m in obj.objs_meta.items():
+                if k == self.anchor_key or len(m.get("kpts_3d", [])) < 3:
+                    continue
+                k3d = np.asarray(m["kpts_3d"], float)
+                T = estimate_frame_pca1(k3d, is_anchor=False, anchor_center_cam=m1["T_obj_in_cam_static"][:3, 3])[0]
+                Ti = np.linalg.inv(T)
+                obj.objs_meta[k] = dict(m, T_obj_in_cam_static=T, kpts_local=(Ti[:3, :3] @ k3d.T + Ti[:3, 3:4]).T)
+                obj.dynamic_obj_poses[k] = T.copy()
+            st["latched_obj"], st["T_lock_h2obj"] = None, None    # the hand is empty: nothing rides with it
+        return True
 
     def _apply_forced_lift(self, pt_cam, arm, counter, anchor_p_base):
         if counter <= 0:
@@ -357,6 +427,10 @@ class EpisodeRunner:
             if geoms[s].get("bread"):
                 controller.set_geometry(s, geoms[s]["bread"], env.T_cam_in_world)
         self._controller = controller
+        self._mask_area0, self._rp_mask = {}, {}
+        if controller.ga_reperceive != "off":
+            m0 = self.perception.debug.get(sides[0], {}).get("masks")
+            self._mask_area0 = {s: int(np.count_nonzero(self._side_mask(s, m0))) for s in sides}
         if tr is not None:
             tr["geoms"] = geoms
         start_delay = float(cc.get("bimanual_start_delay", 6.0))
@@ -436,19 +510,23 @@ class EpisodeRunner:
                                 arm.move_p(T_to_p(Tb), duration=float(rel.get("place_time", 0.9)),
                                            safe_z_min=controller.safe_z_min)
                                 ctx.wrap_phase = "place"
+                        if ctx.wrap_phase is None and float(rel.get("settle", 0.0)) > 0:
+                            ctx.wrap_phase = "settle"            # hold still a moment before opening
                         if ctx.wrap_phase is None:
                             ctx.wrap_phase = "open"
-                            arm.open_gripper(goal_time=0.5)
+                            arm.open_gripper(goal_time=float(rel.get("open_time", 0.5)))
                         if verbose:
                             print(f"[sim] {s} done ({ctx.done_reason}) at t={t:.1f}s -> open + home")
             # ---- wrap-up sequencing (open -> home) ----
             for s, ctx in ctxs.items():
                 rel = cc.get("release", {}) or {}
-                if ctx.wrap_phase == "place" and t - ctx.wrap_t0 >= float(rel.get("place_time", 0.9)) + 0.15:
+                open_t = float(rel.get("open_time", 0.5))      # release: gripper opening time (gentler if longer)
+                if (ctx.wrap_phase == "place" and t - ctx.wrap_t0 >= float(rel.get("place_time", 0.9)) + 0.15
+                        + float(rel.get("settle", 0.0))) or (ctx.wrap_phase == "settle" and t - ctx.wrap_t0 >= float(rel.get("settle", 0.0))):
                     ctx.wrap_phase = "open"
                     ctx.wrap_t0 = t
-                    env.arms[s].open_gripper(goal_time=0.5)
-                elif ctx.wrap_phase == "open" and t - ctx.wrap_t0 >= 0.8:
+                    env.arms[s].open_gripper(goal_time=open_t)
+                elif ctx.wrap_phase == "open" and t - ctx.wrap_t0 >= max(0.8, open_t + 0.3):
                     ctx.wrap_t0 = t
                     d_back = float(rel.get("retreat", 0.0))
                     d_up = float(rel.get("lift", 0.0))
@@ -484,6 +562,9 @@ class EpisodeRunner:
             if t >= next_ctl - 1e-9:
                 controller.tick()
                 next_ctl += Tc
+                for s in sides:
+                    if controller.reperceive[s] is not None:
+                        self._reperceive(s, ctxs[s], controller, geoms)
                 if tr is not None:
                     tr["ticks"].append(self._trace_tick(controller, ctxs, t))
             if tr is not None:

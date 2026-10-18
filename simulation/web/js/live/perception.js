@@ -273,7 +273,7 @@ export class PolicyCamera {
 
   /** Inference.do_object_centric_bimanual (shared_context): per-side object poses + local keypoints. */
   estimateObjects(sides, objectNames, rng, depthNoise, nFrames = 10) {
-    const masks = this.masks(objectNames);
+    const masks = this.lastMasks = this.masks(objectNames);
     const obj1 = new Uint8Array(W * H);
     for (const n of objectNames) if (n.startsWith('bread')) for (let i = 0; i < W * H; i++) obj1[i] |= masks[n][i];
     const full = { obj1, obj2: masks.plate };
@@ -345,6 +345,13 @@ export class PolicyCamera {
       if (u >= 0 && u < W && v >= 0 && v < H) this._kpt(u, v, s.map((x, j) => Math.trunc(x + (e[j] - x) * f)), VK.r);
     }
   }
+}
+
+/** This side's bread pixels in the detector's mask (all breads, robot occluding), as runner.py _side_mask. */
+export function sideBreadMask(masks, objectNames, side, nSides) {
+  const obj1 = new Uint8Array(W * H);
+  for (const n of objectNames) if (n.startsWith('bread')) for (let i = 0; i < W * H; i++) obj1[i] |= masks[n][i];
+  return nSides > 1 ? splitByX(obj1, W >> 1)[side] : obj1;
 }
 
 function splitByX(m, sx) {                        // Inference.split_mask_by_x

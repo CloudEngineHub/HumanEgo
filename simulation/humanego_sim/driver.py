@@ -367,6 +367,43 @@ class SimArm:
             return self.finger_opening() < gap_empty
         return self.get_gripper_q() < q_empty
 
+    # ------------------------------------------------------------ grip sensing
+    def grip_effort(self) -> float:
+        """Gripper motor effort (N): the force of the gripper servo on its joint / tendon. What the real grippers
+        report from their motor: trossen_arm `get_gripper_external_effort` (N), Robotiq gCU (current, ~10 mA
+        per count, proportional to force). The Franka Hand reports none (width and is_grasped only)."""
+        return abs(float(self.d.actuator_force[self.gid]))
+
+    def grip_effort_max(self) -> float:
+        lo, hi = self.m.actuator_forcerange[self.gid]
+        return float(max(abs(lo), abs(hi))) if self.m.actuator_forcelimited[self.gid] else float("inf")
+
+    def gripper_speed(self) -> float:
+        """Gripper joint speed as a fraction of its full stroke per second."""
+        r = self.robot
+        return abs(float(self.d.qvel[self.g_dadr])) / max(abs(r.gripper_joint_open - r.gripper_joint_closed), 1e-6)
+
+    def pad_forces(self) -> Tuple[float, float]:
+        """Normal contact force (N) between each finger's collision geoms and the breads. A tactile pad: NOT on
+        the real grippers (they report finger position and motor effort only)."""
+        m, d = self.m, self.d
+        if not hasattr(self, "_pad_geoms"):
+            fb = [m.body(self.prefix + b).id for b in self.robot.finger_bodies[:2]]
+            col = (m.geom_contype > 0) | (m.geom_conaffinity > 0)
+            self._pad_geoms = [np.nonzero((m.geom_bodyid == b) & col)[0] for b in fb]
+            self._f6 = np.zeros(6)
+        n = d.ncon
+        out = [0.0, 0.0]
+        if n == 0:
+            return 0.0, 0.0
+        g, fl = d.contact.geom[:n], d.contact.flex[:n]
+        for k, pg in enumerate(self._pad_geoms):
+            hit = (np.isin(g[:, 0], pg) & (fl[:, 1] >= 0)) | (np.isin(g[:, 1], pg) & (fl[:, 0] >= 0))
+            for i in np.nonzero(hit)[0]:
+                mujoco.mj_contactForce(m, d, int(i), self._f6)
+                out[k] += abs(float(self._f6[0]))
+        return out[0], out[1]
+
     def gripper_cmd_closed(self) -> bool:
         r = self.robot
         return abs(self._g_to - r.gripper_closed) < abs(self._g_to - r.gripper_open)
