@@ -1,0 +1,13 @@
+# CPU-only test dependencies (GitHub Actions: pytest simulation/tests -m "not sim").
+# torch comes from the CPU wheel index first:  pip install torch --index-url https://download.pytorch.org/whl/cpu
+mujoco==3.16.0
+numpy
+scipy
+pyyaml
+python-box
+opencv-python-headless
+pillow
+scikit-learn
+trimesh
+imageio
+pytest
