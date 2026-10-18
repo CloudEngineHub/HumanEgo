@@ -166,29 +166,42 @@ Notes on the modelling choices (all in `configs/serve_bread.yaml`):
   `safe_z_min = −0.20 m` "protects the table", which puts the table just below the arm
   bases. Objects then lie ~0.6 m from the camera, inside the depth range of the human
   training data. Bread yaw ~90° (long axis left–right in the image) as in the demos.
+* **Physics from measurements, not from the policy's score.** Every physical parameter, its
+  defensible range and its source (food-science papers, datasheets, the real rollout videos,
+  the released dataset) is in [`docs/physics_params.md`](docs/physics_params.md); policy-free
+  tests check the model against them (`scripts/physics_compress.py`, `physics_pinch.py`,
+  `physics_drop.py`, `physics_gripper.py`, `drop_test.py`; log: [`docs/upgrade/physics.md`](docs/upgrade/physics.md)).
 * **Object sizes and masses** come from the released dataset's triangulated contour
-  keypoints (croissant ≈ 13.8 × 6.2 × 5 cm, plate ⌀ 24.5 cm), the real rollout video for
-  the danish loaf (≈ 14 × 7.4 × 6 cm, measured against the plate) and real weights
-  (croissant 50 g, danish 75 g, plate 450 g).
+  keypoints (croissant ≈ 13.8 × 6.2 × 5 cm, plate ⌀ 24.5 cm, confirmed by a circle fit to the
+  Aria SLAM points of 42 demos), the real rollout video for the danish loaf (≈ 14 × 7.4 × 6 cm,
+  measured against the plate) and the plate's rim height (3 cm, three rollout views), and
+  real weights (croissant 50 g, danish 75 g, plate 450 g).
 * **Breads that look like the real ones.** `scripts/bread_gen.py` builds the straight rolled
   croissant of the demos (chevron bands, pale dough in the grooves, glossy egg wash) and the
   laminated danish loaf with its sugar crust as parametric surfaces with painted PBR maps.
   As in the real bimanual run, the right arm gets the croissant and the left arm the danish.
 * **Soft bread** (`humanego_sim/softbody.py`). Each bread is a MuJoCo flex: its collision
   surface is interpolated from a 4 × 2 × 2 trilinear grid of point masses with volumetric
-  elasticity (E = 20 kPa, ν = 0.25, crumb of a fresh croissant), and the textured mesh is
+  elasticity (E = 20 kPa, ν = 0.25: brioche crumb is 20 ± 3 kPa), and the textured mesh is
   bound to the same grid as a skin, so the crust visibly squashes under the fingers and
-  springs back. The grip holds by friction alone (μ = 1.0, the Menagerie gripper servo:
-  kp 339 N/m, ≈ 11 N on a croissant). Flex elasticity needs MuJoCo's `discrete`
-  integrator (implicit in position, stable at the 2 ms step); `impratio = 100` stops a held
-  bread from creeping out of the grip. `physics.bread_model: rigid` restores the earlier
-  rigid-bread + finger-adhesion proxy.
+  springs back. The contact is stiff (`solimp` 0.995): the fingers' indentation comes from the
+  crumb's modulus, not from the contact sinking in (with the earlier `solimp` 0.95 a crumb cube
+  of E = 20 kPa responded like 6.8 kPa). The grip holds by friction alone; each surface has its
+  own friction (crust on the silicone finger pads 0.8, on the plastic plate 0.4, on the maple
+  table 0.45, on crust 0.4; no published value exists for bread, so these are proxies from food
+  on rubber / plastic / wood). Grippers squeeze as their hardware does: the Trossen through the
+  system-identified Menagerie servo (kp 339 N/m: 4–8 N per finger on the breads), the 2F-85 at its
+  minimum force setting (~20 N per pad) and the Franka Hand with a 20 N grasp. Flex elasticity
+  needs MuJoCo's `discrete` integrator (implicit in position, stable at the 2 ms step);
+  `impratio = 100` keeps a held bread from creeping (0.1–0.3 mm/s under its weight).
+  `physics.soft.plastic` adds the crumb's permanent dent (off by default, Python only).
+  `physics.bread_model: rigid` restores the earlier rigid-bread + finger-adhesion proxy.
 * **Crumb that lands dead.** Real crumb dissipates almost all impact energy: a dropped bread
-  does not bounce. Flex damping 0.03 s and over-damped bread contacts (`solref` damping
-  ratio 3) reproduce that. It matters for the second bread: the left arm releases the danish
-  ~11 cm above the plate, often onto the croissant already there. In `scripts/drop_test.py`
-  (danish dropped 4–9 cm onto a croissant lying on the plate, random offset and tilt) it
-  stays on the plate in 90 % of drops, against 13 % with near-elastic crumb.
+  does not bounce (the real croissant, released 6 cm above the plate, is at rest within
+  0.27 s). Flex damping 0.03 s (loss tangent ≈ 0.17 at the grasp time scale) and over-damped
+  bread contacts (`solref` damping ratio 3) reproduce that: coefficient of restitution
+  0.16–0.19 (`physics_drop.py`). In `scripts/drop_test.py` (danish dropped 4–9 cm onto a
+  croissant lying on the plate, random offset and tilt) it stays on the plate in 100 % of drops.
 * **Served = resting on the plate.** An arm succeeds when it released its bread and the bread
   rests on the plate: its centre is over the plate and no part touches the table (the
   plate's floor is 8.5 mm above the table). The earlier rule, centre within R − 2 cm, failed

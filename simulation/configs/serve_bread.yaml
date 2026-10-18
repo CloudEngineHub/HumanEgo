@@ -58,18 +58,35 @@ physics:
   soft:
     dof: trilinear
     cells: {croissant: [4, 2, 2], bun: [4, 2, 2]}
-    young: 2.0e+4          # Pa; fresh croissant / brioche crumb is ~5-50 kPa
+    young: 2.0e+4          # Pa; brioche crumb 20 +- 3 kPa, croissant ~15-60 kPa (docs/physics_params.md)
     poisson: 0.25
-    damping: 0.03          # s; crumb is very lossy: a dropped bread lands dead, it does not bounce
+    damping: 0.03          # s, Rayleigh: crumb loss tangent 0.17 at ~1 Hz (the grasp time scale)
     radius: 0.001
-  impratio: 100            # stiff friction cone: a held bread does not creep out of the grip
-  bread_friction: [1.0, 0.01, 0.001]   # crust on the rubber finger pads
+  impratio: 100            # friction regulariser 1/100 of the normal one: sub-slip creep of a held bread 0.1-0.8 mm/s
+                           # (impratio 10: 10x faster; the real bread does not visibly slip, docs/physics_params.md)
+  # Contact: every bread contact takes the larger friction of the two surfaces (bread priority 0 like all
+  # geoms), so the crust's own value is the floor (crust on crust / hard plastic) and the finger pads, plate
+  # and table set theirs; solmix makes the bread's solref / solimp win. Sources: docs/physics_params.md.
+  bread_friction: [0.4, 0.01, 0.001]   # crust on hard surfaces and on crust (0.25-0.55)
+  pad_friction: 0.8        # crust on the silicone / rubber finger pads (0.5-1.1)
+  plate_friction: 0.4      # plastic plate (0.25-0.55)
+  table_friction: 0.45     # finished maple (0.3-0.6); also plate on table
+  bread_priority: 0
+  bread_solmix: 1000.0
   bread_mass: {croissant: 0.050, bun: 0.075}
-  bread_solref: [0.004, 3.0]   # over-damped contact: crumb crushes instead of bouncing (drop_test.py)
-  bread_solimp: [0.9, 0.95, 0.001, 0.5, 2.0]
+  # over-damped (damping ratio 3) so a dropped bread lands dead (e ~ 0.17, drop tests), but stiff in steady
+  # state (solimp 0.995): the fingers' indentation comes from the crumb's E, not from contact penetration
+  # (crumb cube: apparent E 16 kPa of 20, against 6.8 kPa with solimp 0.95)
+  bread_solref: [0.004, 3.0]
+  bread_solimp: [0.95, 0.995, 0.001, 0.5, 2.0]
   bread_condim: 4
   plate_mass: 0.45
-  gripper_force: 12.0      # N
+  # Trossen gripper: the Menagerie servo (kp 339 N/m, system-identified on the real arm) with its own force
+  # cap; closing on a bread it squeezes 4-8 N per finger
+  gripper_force: 35.0      # N, actuator cap (Menagerie)
+  robot_gripper:
+    ur5e: {force: 2.2}     # 2F-85 tendon cap -> ~20 N per pad: the gripper's minimum force setting (20-235 N)
+    franka_panda: {force: 40.0, kp_scale: 30.0}   # force-controlled grasp, ~20 N per finger (frankx default; 70 N cont.)
   finger_adhesion: 6.0     # rigid model only: N per finger while closed (soft-bread proxy)
   arm_kp_scale: 4.0        # x Menagerie gains (real Trossen servos track much tighter)
   arm_kv_ratio: 0.08       # extra joint damping relative to kp

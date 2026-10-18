@@ -34,7 +34,7 @@ PLATE_FLOOR = 0.0085      # plate floor above the table (plate_meta foot_h + t)
 
 def drop_once(b: Bench, name: str, h: float, rng, tilt_deg: float = 10.0):
     m, d = b.m, b.d
-    mujoco.mj_resetData(m, d)
+    b.reset()
     for o in b.soft:
         if o != name:
             b.park(o, xy=(2.0, 2.0 + 0.3 * len(o)))

@@ -22,7 +22,7 @@ from scipy.spatial.transform import Rotation as R
 from .cameras import CameraSpec, get_camera
 from .driver import SimArm, T_from
 from .robots import RobotSpec, get_robot
-from .softbody import SoftBody
+from .softbody import PlasticSet, SoftBody
 from .scene import G_ROBOT, build_scene, yaw_quat
 
 SIM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -81,6 +81,9 @@ class ServeBreadSim:
         self.obj_names: List[str] = list(self.meta["objects"])
         self.soft: Dict[str, SoftBody] = {n: SoftBody(self.m, n, o["soft"])
                                           for n, o in self.meta["objects"].items() if "soft" in o}
+        pl = cfg.get("physics", {}).get("soft", {}).get("plastic", {})          # optional plastic set
+        self.plastic = [PlasticSet(self.m, sb, self.meta["objects"][n]["soft"], pl)
+                        for n, sb in self.soft.items()] if pl.get("enabled") else []
         self.obj_bodies = {name: self.m.body(name).id for name in self.obj_names if name not in self.soft}
         self.obj_free_qadr = {name: self.m.jnt_qposadr[self.m.body_jntadr[bid]] for name, bid in self.obj_bodies.items()}
         self.obj_free_dadr = {name: self.m.jnt_dofadr[self.m.body_jntadr[bid]] for name, bid in self.obj_bodies.items()}
@@ -119,6 +122,8 @@ class ServeBreadSim:
             {"plate": [x, y, yaw], "bread_right": [x, y, yaw], "bread_left": [...]}
         """
         mujoco.mj_resetData(self.m, self.d)
+        for p in self.plastic:
+            p.reset(self.m)
         self.t = 0.0
         sc = self.default_scene()
         if scene:
@@ -197,6 +202,8 @@ class ServeBreadSim:
             for arm in self.arms.values():
                 arm.update(self.t)
             mujoco.mj_step(self.m, self.d)
+            for p in self.plastic:
+                p.update(self.m, self.d)
             self.t += self.dt
             if self.obs_history is not None:
                 self.obs_history.append((self.t, self.d.qpos.copy()))

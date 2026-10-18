@@ -158,7 +158,7 @@ def plate_profile(R=0.1225, H=0.022, r_well=0.080, r_foot=0.072, t=0.0045, foot_
     return np.array(top + bot)
 
 
-def build_plate(R=0.1225, H=0.022):
+def build_plate(R=0.1225, H=0.030):   # rim 2.9 +- 0.4 cm above the table (real video, SLAM 3.5 cm)
     prof = plate_profile(R=R, H=H)
     # trimesh.creation.revolve wants (r, z) with a closed polyline; build manually
     n_seg = 96

@@ -96,7 +96,7 @@ def build(ov, pad, pad_friction):
 
 def run_one(b: Bench, name: str, force: float, dz: float, along: float, slip_max: float = 40.0, lift_time: float = 1.0):
     m, d = b.m, b.d
-    mujoco.mj_resetData(m, d)
+    b.reset()
     for o in list(b.soft) + ["plate"]:
         if o != name:
             b.park(o, xy=(2.0, 2.0 + 0.3 * len(o)))
@@ -206,8 +206,12 @@ if __name__ == "__main__":
     if args.kind == "bun":
         ov.setdefault("scene", {}).setdefault("bread", {}).setdefault("left", {})["type"] = "bun"
     name = "bread_right" if args.kind == "croissant" else "bread_left"
-    b = build(ov, args.pad, args.pad_friction)
-    mu = b.cfg["physics"]["bread_friction"][0]
+    from humanego_sim.env import load_config
+    ph = load_config(None, ov)["physics"]
+    pad_mu = args.pad_friction if args.pad_friction is not None else ph.get("pad_friction")
+    b = build(ov, args.pad, pad_mu)
+    # pair friction: the bread's wins at priority 1, else the larger of bread and pad (MuJoCo's max rule)
+    mu = ph["bread_friction"][0] if int(ph.get("bread_priority", 1)) > 0 else max(ph["bread_friction"][0], pad_mu or 1.0)
     rows = []
     for F, dz, al in itertools.product([float(x) for x in args.force.split(",")], [float(x) for x in args.dz.split(",")],
                                        [float(x) for x in args.along.split(",")]):

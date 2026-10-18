@@ -64,7 +64,7 @@ def setup(ov):
 
 def reset(b, arm, robot, width=None):
     m, d = b.m, b.d
-    mujoco.mj_resetData(m, d)
+    b.reset()
     for o in list(b.soft) + ["plate"]:
         b.park(o, xy=(2.0, 2.0 + 0.3 * len(o)))
     arm.set_j_instant(robot.initial_joints["right"], gripper=robot.gripper_open)

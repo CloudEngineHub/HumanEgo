@@ -112,6 +112,14 @@ def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
             g.group = G_ROBOT
         else:
             g.group = G_COLLISION
+    # finger pads (silicone / rubber on all three hands): physics.pad_friction for every collision geom of
+    # the finger bodies, at priority 0 so that a bread contact takes the larger friction of the two
+    if phys.get("pad_friction") is not None:
+        for fb in robot.finger_bodies:
+            for g in child.body(fb).find_all(mujoco.mjtObj.mjOBJ_GEOM):
+                if g.contype or g.conaffinity:
+                    g.friction = [float(phys["pad_friction"]), g.friction[1], g.friction[2]]
+                    g.priority = 0
     # real servos run on-board gravity compensation
     for b in child.bodies:
         if b.name != "world":
@@ -129,7 +137,8 @@ def _load_robot_spec(robot: RobotSpec, phys: dict) -> mujoco.MjSpec:
             a.biasprm[1] = -kp
             a.biasprm[2] = -kv_ratio * kp
             a.forcerange = [a.forcerange[0] * 2.0, a.forcerange[1] * 2.0]
-        elif a.name == robot.gripper_actuator and robot.gripper_force_param:
+        elif a.name == robot.gripper_actuator and (robot.gripper_force_param
+                                                    or robot.name in phys.get("robot_gripper", {})):
             # physics.gripper_force / gripper_kp_scale tune the Trossen (real rig); other robots use their
             # RobotSpec values unless physics.robot_gripper.<robot> overrides them
             rg = phys.get("robot_gripper", {}).get(robot.name, {})
@@ -319,7 +328,7 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     sx = 0.5 * (tb["x_max"] - tb["x_min"])
     sy = float(tb["half_width"])
     gtop = _add_box(table, "table_top", [sx, sy, th / 2], [cx, 0.0, -th / 2], material="maple")
-    gtop.friction = [0.8, 0.005, 0.0001]
+    gtop.friction = [float(phys.get("table_friction", 0.8)), 0.005, 0.0001]
     leg_h = (table_h - th) / 2
     for i, (lx, ly) in enumerate([(tb["x_min"] + 0.06, sy - 0.06), (tb["x_min"] + 0.06, -sy + 0.06),
                                   (tb["x_max"] - 0.06, sy - 0.06), (tb["x_max"] - 0.06, -sy + 0.06)]):
@@ -410,7 +419,8 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     bf = phys.get("bread_friction", [1.0, 0.01, 0.0005])
     contact = {"friction": list(bf), "condim": int(phys.get("bread_condim", 4)),
                "solref": list(phys.get("bread_solref", [0.004, 1.0])),
-               "solimp": list(phys.get("bread_solimp", [0.9, 0.95, 0.001, 0.5, 2.0]))}
+               "solimp": list(phys.get("bread_solimp", [0.9, 0.95, 0.001, 0.5, 2.0])),
+               "priority": int(phys.get("bread_priority", 1)), "solmix": float(phys.get("bread_solmix", 1.0))}
     obj_meta = {}
     for s, bd in breads.items():
         kind = bd["type"]
@@ -515,6 +525,8 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     for gg in pb.geoms:
         if gg.name.startswith("plate_well") or gg.name.startswith("plate_rim"):
             gg.density = float(phys.get("plate_mass", 0.45)) / plate_vol
+            if "plate_friction" in phys:             # plastic plate (MuJoCo default 1 otherwise)
+                gg.friction = [float(phys["plate_friction"]), 0.005, 0.0001]
     obj_meta["plate"] = {"kind": "plate", "R": Rr, "H": H}
 
     # ---------------- write ----------------

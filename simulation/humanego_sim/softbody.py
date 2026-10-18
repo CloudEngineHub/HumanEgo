@@ -89,7 +89,11 @@ def add_soft_bread(spec: mujoco.MjSpec, name: str, kind: str, pos, mass: float, 
     fl.condim = int(contact["condim"])
     fl.solref = list(contact["solref"])
     fl.solimp = list(contact["solimp"])
-    fl.priority = 1                       # the bread's contact parameters win
+    # priority 0 (= every other geom): friction is the larger of the two surfaces' (physics.bread_friction
+    # is the crust's floor, each finger pad / plate / table sets its own), and a large solmix makes the
+    # bread's solref / solimp win the mix. Priority 1 (earlier default): the bread's parameters win outright.
+    fl.priority = int(contact.get("priority", 1))
+    fl.solmix = float(contact.get("solmix", 1.0))
     fl.group = flex_group                 # collision surface: never rendered
     fl.rgba = [0.9, 0.6, 0.2, 0.0]
 
@@ -190,3 +194,60 @@ class SoftBody:
         P = d.xpos[self.bodies]
         Rm, t = self.fit(P)
         return float(np.abs(P - (self.local @ Rm.T + t)).max())
+
+
+class PlasticSet:
+    """Permanent dent of the crumb, emulated on MuJoCo's elastic flex (Python; physics.soft.plastic).
+
+    Real crumb yields at ~3 kPa (Assad-Bustillos et al. 2018) and keeps part of a deep squeeze (TPA
+    springiness 0.85-0.93). MuJoCo's flex is elastic, but its elastic force pulls the grid nodes towards
+    `m.flex_node0`, which can be rewritten at runtime. Every `every` steps, each node's deviation from
+    the bread's rigid fit (in the original rest frame) beyond the yield deviation `yield_strain * h`
+    (h = mean grid cell size) sets a permanent offset of `retain` x that excess; the offset only grows.
+    The rest layout is restored at episode reset. The same arrays are writable in MuJoCo WASM
+    (model.flex_node0), so the scheme ports to the browser as-is; it is not ported yet.
+    """
+
+    def __init__(self, m: mujoco.MjModel, sb: SoftBody, meta: dict, cfg: dict):
+        self.sb = sb
+        a, n = int(m.flex_nodeadr[sb.flex_id]), int(m.flex_nodenum[sb.flex_id])
+        self.sl = slice(a, a + n)
+        self.node0 = m.flex_node0[self.sl].copy()             # original rest layout (flex frame)
+        self.valid = sb.valid
+        cells = np.asarray(meta["cells"], float)
+        self.h = float(np.mean((np.asarray(meta["hi"]) - np.asarray(meta["lo"])) / cells))
+        self.eps_y = float(cfg.get("yield_strain", 0.15))
+        self.retain = float(cfg.get("retain", 0.15))
+        self.every = int(cfg.get("every", 10))
+        self.u = np.zeros_like(self.node0)                     # permanent offsets
+        self._k = 0
+
+    def reset(self, m: mujoco.MjModel) -> None:
+        m.flex_node0[self.sl] = self.node0
+        self.u[:] = 0.0
+        self._k = 0
+
+    def update(self, m: mujoco.MjModel, d: mujoco.MjData) -> None:
+        self._k += 1
+        if self._k % self.every:
+            return
+        P = self.node0[self.valid]
+        X = d.xpos[self.sb.bodies]
+        Pm, Xm = P.mean(0), X.mean(0)
+        U, _, Vt = np.linalg.svd((X - Xm).T @ (P - Pm))
+        Rm = U @ np.diag([1.0, 1.0, np.sign(np.linalg.det(U @ Vt))]) @ Vt     # X ~ Rm P
+        dev = (X - Xm) @ Rm + Pm - P                                          # deviation in the rest frame
+        mag = np.linalg.norm(dev, axis=1)
+        ex = mag - self.eps_y * self.h
+        hit = ex > 0
+        if not hit.any():
+            return
+        cand = np.zeros_like(dev)
+        cand[hit] = (self.retain * ex[hit] / mag[hit])[:, None] * dev[hit]
+        u = self.u[self.valid]
+        grow = np.linalg.norm(cand, axis=1) > np.linalg.norm(u, axis=1)
+        if not grow.any():
+            return
+        u[grow] = cand[grow]
+        self.u[self.valid] = u
+        m.flex_node0[self.sl] = self.node0 + self.u

@@ -29,7 +29,7 @@ from humanego_sim.cameras import get_camera  # noqa: E402
 from humanego_sim.env import load_config  # noqa: E402
 from humanego_sim.robots import ASSETS, get_robot  # noqa: E402
 from humanego_sim.scene import build_scene  # noqa: E402
-from humanego_sim.softbody import SoftBody  # noqa: E402
+from humanego_sim.softbody import PlasticSet, SoftBody  # noqa: E402
 
 
 TEST_XY = (0.55, 0.0)     # free table area (the plate's usual spot; the camera mast stands at x = -0.045)
@@ -84,7 +84,15 @@ class Bench:
         self.dt = float(self.m.opt.timestep)
         self.soft: Dict[str, SoftBody] = {n: SoftBody(self.m, n, o["soft"])
                                           for n, o in self.meta["objects"].items() if "soft" in o}
+        pl = self.cfg["physics"].get("soft", {}).get("plastic", {})
+        self.plastic = [PlasticSet(self.m, sb, self.meta["objects"][n]["soft"], pl)
+                        for n, sb in self.soft.items()] if pl.get("enabled") else []
         mujoco.mj_forward(self.m, self.d)
+
+    def reset(self) -> None:
+        mujoco.mj_resetData(self.m, self.d)
+        for p in self.plastic:
+            p.reset(self.m)
 
     # ------------------------------------------------------------------ objects
     def extents(self, name: str) -> np.ndarray:
@@ -146,6 +154,8 @@ class Bench:
     def step(self, n: int = 1) -> None:
         for _ in range(n):
             mujoco.mj_step(self.m, self.d)
+            for p in self.plastic:
+                p.update(self.m, self.d)
 
 
 def add_mocap_box(spec, name, size, pos, rgba=(0.3, 0.3, 0.3, 1), friction=None, euler=None):
