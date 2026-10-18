@@ -111,6 +111,31 @@ def table(names, conditions=None):
                   f"| {side('right')} | {side('left')} | {100 * bo['rate']:.0f} % | {vs} | {mp} | {modes} |")
 
 
+def compare(pairs, conditions):
+    """Paired test of report B against report A, per condition, pooled over the given report pairs
+    (e.g. both development seeds): pairs = ["A1:B1", "A2:B2", ...]."""
+    print("| condition | A per arm | B per arm | B − A (paired, 95 % CI) | discordant B+/A+ | McNemar p | scenes |")
+    print("|---|---|---|---|---|---|---|")
+    for c in conditions:
+        ra, rb = [], []
+        for k, pr in enumerate(pairs):
+            a, b = pr.split(":")
+            fa, fb = (os.path.join(ROOT, x, f"{c}.json") for x in (a, b))
+            if not (os.path.exists(fa) and os.path.exists(fb)):
+                continue
+            for src, dst in ((fa, ra), (fb, rb)):
+                for r in json.load(open(src))["results"]:
+                    dst.append(dict(r, idx=k * 100000 + r["idx"]))
+        if not ra:
+            continue
+        p = paired(rb, ra)
+        lo, hi = p["boot95"]
+        # paired(rb, ra): rate_a is B's, rate_b is A's; a_only = arms only B served
+        print(f"| {c} | {100 * p['rate_b']:.0f} % | {100 * p['rate_a']:.0f} % | "
+              f"{100 * p['diff']:+.0f} [{100 * lo:+.0f}, {100 * hi:+.0f}] | {p['a_only']} / {p['b_only']} | "
+              f"{p['mcnemar_p']:.2g} | {p['n_scenes']} |")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--robot", default="trossen_wxai")
@@ -123,8 +148,12 @@ if __name__ == "__main__":
     ap.add_argument("--workers", type=int, default=5)
     ap.add_argument("--log", action="store_true", help="keep every episode (for scripts/grasp_audit.py)")
     ap.add_argument("--table", nargs="*", default=None, help="only print the tables of these reports")
+    ap.add_argument("--compare", nargs="*", default=None,
+                    help="paired test B vs A per condition, pooled over pairs 'A:B' (e.g. two seeds)")
     a = ap.parse_args()
-    if a.table is not None:
+    if a.compare is not None:
+        compare(a.compare, a.conditions)
+    elif a.table is not None:
         table(a.table)
     else:
         run(a)

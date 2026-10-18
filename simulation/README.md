@@ -366,6 +366,91 @@ while the danish slips, but the flicker is a symptom: latched, the Trossen left 
 place-down on the Trossen and Franka; the −0.6 cm pinch cap on the UR5e and Franka (UR5e
 left arm 50–71 % instead of 67–88 %); lifting the open hand without placing first.
 
+## Robustness
+
+The numbers above use idealised sensing: ground-truth masks, Gaussian depth noise, a perfect
+hand-eye calibration, a fresh image every step, and one nominal scene. `humanego_sim/robustness.py`
+adds the errors of a real rig, and `scripts/robust_report.py` measures each one alone and all of
+them together, on the same scenes as the clean run (paired test, README "Evaluation protocol").
+Everything except mask fusion is off by default.
+
+| perturbation | key | model at the "realistic" level used here |
+|---|---|---|
+| segmentation errors | `perception.mask_noise` | per object, an erosion/dilation of ±2 px that persists through the episode; 1.5 px smooth boundary jitter; in each detector frame, 5 % missed detections per object and 10 % spurious blobs |
+| real segmenter | `perception.mask_source: dinosam` | the released DINO-SAM (Grounding-DINO tiny + SAM2 tiny) on the rendered camera image, run by `scripts/dinosam_server.py` in an env with transformers + sam2 (`HUMANEGO_DINOSAM_PYTHON`) |
+| clutter taken for bread | `perception.distractor_confusion` | per episode, a banana is segmented as bread 30 % of the time, the yellow box 8 % |
+| depth artefacts | `perception.depth_artifacts` | in a 2 px band at depth steps over 8 mm, flying pixels (50 %) and holes (25 %); 3 % of pixels in hole blobs (70 % of the pattern persistent); depth scale error σ 0.5 % |
+| hand-eye calibration | `perception.calib_error` | true camera vs calibration: σ 0.3° and 3 mm per axis |
+| timing | `perception.latency` | the policy image is 66–99 ms old; 5 % of frames are not refreshed |
+| scene variation | `--variation` (`sampling.sample_scenes`) | bread size ±12 %; bread yaw ±15° and plate position ±3 cm beyond the paper's spread; table ±1 cm (the robot assumes the nominal height); light ±35 %, colour tint, key light tilted up to 25°; 1–3 visual-only distractors behind the task area |
+
+How the levels were set:
+
+* **Segmentation.** On these renders the real DINO-SAM is close to the ground truth
+  (`scripts/robust_mask_calib.py`, 32 scenes × 4 conditions): bread IoU 0.97, boundary within
+  about 1 px, plate IoU 0.94 (it includes the plate's shadow), no missed objects. It does take
+  clutter for bread: the banana in 3 of 10 scenes and the yellow box in 1 of 13. The synthetic
+  `mask_noise` is therefore a stress level for real images, which are harder than renders.
+* **Depth.** The spec of the RealSense D405.
+* **Calibration.** A typical, not best-case, checkerboard hand-eye calibration.
+* **Latency.** A 30 fps USB camera.
+
+**Development seeds, Trossen** (tuned settings + grasp skill, single-frame masks as released;
+32 scenes on seed 7777, plus 32 on seed 8888 for clean / masks / all). Difference vs clean on the
+same scenes, scene-bootstrap 95 % CI; p is McNemar:
+
+| condition | per arm [95 % CI] | vs clean | p |
+|---|---|---|---|
+| clean | 92 % [83, 97] · 8888: 91 % [81, 96] | — | — |
+| segmentation errors | **80 %** [68, 88] · 8888: **80 %** [68, 88] | −12 [−25, −2] · −11 [−22, −2] | 0.04 · 0.04 |
+| depth artefacts | 86 % [75, 92] | −6 [−14, 0] | 0.29 |
+| calibration | 88 % [77, 94] | −5 [−14, +3] | 0.38 |
+| latency | 92 % [83, 97] | 0 | 1 |
+| bread size | 89 % [79, 95] | −3 [−14, +6] | 0.75 |
+| layout | 86 % [75, 92] | −6 [−16, +2] | 0.22 |
+| table height | 91 % [81, 96] | −2 [−6, +3] | 1 |
+| lighting | 91 % [81, 96] | −2 [−8, +3] | 1 |
+| distractors | 89 % [79, 95] | −3 [−9, 0] | 0.5 |
+| **all together** | **70 %** [58, 80] · 8888: **80 %** [68, 88] | −22 [−39, −6] · −11 [−23, +2] | 0.004 · 0.09 |
+
+* **Only segmentation errors cost significant success alone; the policy shrugs off the rest.**
+  Lighting, latency and table height change nothing measurable. Depth artefacts, calibration
+  error and layout each cost about 5 points, within noise at this n.
+* **What loses the arms is missed detections.** On seed 7777 (`scripts/robust_audit.py`,
+  `scripts/robust_perception.py`), 8 of the 10 arms lost to segmentation errors had a bread or
+  the plate missed in the one DINO-SAM frame. The object then has no keypoints, its pose is
+  the identity, and the policy closes on air. A missed plate costs both arms. The boundary
+  errors move the perceived bread by only 1–3 mm.
+* **Combined,** the remaining losses are clutter taken for bread (the box: the right arm's bread
+  perceived 16 and 33 cm off) and a spread of calibration, layout and size cases.
+
+**Perception-side mitigations** (development seeds 7777 + 8888 pooled, 64 scenes, paired):
+
+| mitigation | segmentation errors | all together | clean |
+|---|---|---|---|
+| **mask fusion over 5 frames** (`perception.mask_frames: 5`) | 80 → **88 %**, +9 [+1, +16], p = 0.04 | 75 → **83 %**, +8 [−1, +16], p = 0.08 | identical (fused GT masks are the same mask) |
+| lift from a 3 px eroded mask (`lift_reject.erode_px`) | no change open-loop | — | moves the clean perception: not adopted |
+| drop keypoints on the table plane (`lift_reject.table_margin`) | never fires | — | — |
+
+Mask fusion runs the detector on 5 frames, drops empty frames and frames whose area is off the
+median by more than 35 %, and keeps the pixels most frames agree on. It removes transient misses
+and blobs; persistent errors such as clutter taken for bread stay. It is **on by default**
+(`configs/serve_bread.yaml`, `perception.mask_frames: 5`). On the real rig it costs four more
+DINO-SAM calls at t = 0. The keypoint lift is not where arms are lost, so the lift options stay
+off.
+
+```bash
+# development: one robot, every condition, same scenes (the scripts refuse reserved seeds without --final)
+python simulation/scripts/robust_report.py --robot trossen_wxai --seed 7777 --n 32 --log
+python simulation/scripts/robust_report.py --table trossen_wxai_7777
+python simulation/scripts/robust_report.py --compare trossen_dev7777:trossen_dev7777_fuse5 --conditions masks all
+python simulation/scripts/robust_audit.py trossen_wxai_7777 masks all       # what lost the arms
+python simulation/scripts/robust_perception.py --n 32 --conditions masks depth calib   # open-loop perception error
+```
+
+The final report on the reserved scene set (100 scenes per robot) is run once the simulator's
+physics is final; see `docs/upgrade/robust.md`.
+
 ## Live mode: the policy in your browser
 
 `web/js/live/` is a line-by-line port of the Python stack to JavaScript:

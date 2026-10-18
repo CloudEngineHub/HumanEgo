@@ -95,6 +95,11 @@ perception:                # mirrors cfg/inference/serve_bread + cfg/preprocess/
   n_init_frames: 10
   depth_noise: true
   latch_dist_thresh: 0.20
+  # Masks from 5 detector frames, fused (drop empty / off-size frames, pixel majority vote). The
+  # released pipeline runs DINO-SAM on one frame; a missed bread or plate then loses the arm.
+  # Fusion is a no-op on clean ground-truth masks; with realistic segmentation errors it serves
+  # +9 points per arm (README "Robustness"). 1 = the released single-frame behaviour.
+  mask_frames: 5
 
 control:                   # cfg/inference/serve_bread/Control.yaml (real rig)
   control_freq: 10.0

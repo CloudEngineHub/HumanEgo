@@ -285,6 +285,8 @@ def distractor_masks(env, distractors: List[dict]) -> List[np.ndarray]:
 # ----------------------------------------------------------------------------- report conditions
 # "Realistic" levels used by scripts/robust_report.py (README, "Robustness" explains each choice).
 # set: perception overrides (--set), variation: scene variation (sampling.apply_variation).
+# Masks are fused over perception.mask_frames frames (default 5); add --set perception.mask_frames=1
+# for the released single-frame pipeline.
 CONDITIONS = {
     "clean": {},
     "masks": {"set": {"perception": {"mask_noise": {"enabled": True}}}},

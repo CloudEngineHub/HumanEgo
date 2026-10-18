@@ -115,10 +115,24 @@ distractor) stays.
 
 * Open loop, seed 7777, 64 breads: failures 4 → 1 (masks) and 6 → 3 (all). The clean perception
   is identical: the GT frames are identical, so the fused mask is the same mask.
-* Closed loop, seed 7777, masks: **80 % → 89 %** per arm (clean 92 %).
-* Pending in `scripts/robust_batch.sh`: all on 7777, and clean / masks / all on 8888.
-* Clean case: not re-run closed loop, because the perception input is bit-identical (fusing
-  identical GT masks).
+* Closed loop, per arm, unfused → fused (paired on the same scenes; `robust_report.py --compare`):
+
+  | | seed 7777 | seed 8888 | pooled (64 scenes, 128 arms) |
+  |---|---|---|---|
+  | masks | 80 → 89 % (+9 [−2, +20], p 0.18) | 80 → 88 % | **+9 [+1, +16], discordant 18 / 7, McNemar p = 0.043** |
+  | all | 70 → 83 % (+12 [−2, +27], p 0.08) | 80 → 83 % | +8 [−1, +16], discordant 18 / 8, p = 0.076 |
+
+* Clean case: the clean perception is bit-identical (state, masks, depth, every object pose /
+  keypoint hash equal to main with `mask_frames: 5`). Fusing identical GT frames gives the
+  same mask, so the clean closed loop cannot change and was not re-run.
+* **Verdict: adopted, default-on** (`configs/serve_bread.yaml`, `perception.mask_frames: 5`).
+  It meets both criteria under segmentation errors, and is positive (not significant) when all
+  perturbations act together.
+* **Needs JS port** (controller session, `web/js/live/perception*.js`): only for parity if the
+  browser ever gets noisy or real masks. With the three.js ground-truth masks used there now,
+  fusion is a no-op, so nothing changes in Live mode.
+* Real rig: `do_object_centric_bimanual` would call DINO-SAM on 5 of the init frames instead of
+  `frames[0]` and fuse them (`perception.fuse_masks`).
 
 **4b. Outlier rejection in the keypoint lift** (`perception.lift_reject`). Open loop, seed 7777:
 
@@ -131,17 +145,36 @@ distractor) stays.
 The lift is not where arms are lost: boundary and depth noise move the bread by about 2 mm.
 **Neither variant is adopted.** The code stays as options, off by default.
 
+## 5. Final report on the reserved scene set: commands (to run on the final physics)
+
+The batch was stopped before part B (by the coordinator): the reserved set must run on the
+final physics defaults. Nothing of seed 9001 has been run or looked at (the partial `meta.json`
+was deleted). Two runs per robot, from the repo root, 5 workers each:
+
+* With the adopted default (fused masks): every condition, logged for the audit.
+* The released single-frame masks, for the mitigation rows.
+
+`dinosam` needs `~/miniconda3/envs/v2d` (or `HUMANEGO_DINOSAM_PYTHON`) and ~1 GB of GPU per worker.
+
+```bash
+for r in trossen_wxai franka_panda ur5e; do
+  python simulation/scripts/robust_report.py --robot $r --seed 9001 --n 100 --final --log --workers 5 --name ${r}_9001
+  python simulation/scripts/robust_report.py --robot $r --seed 9001 --n 100 --final --workers 5 --name ${r}_9001_single \
+      --set 'perception.mask_frames=1' --conditions masks dinosam all
+done
+python simulation/scripts/robust_report.py --table trossen_wxai_9001 franka_panda_9001 ur5e_9001
+python simulation/scripts/robust_report.py --compare trossen_wxai_9001_single:trossen_wxai_9001 \
+    franka_panda_9001_single:franka_panda_9001 ur5e_9001_single:ur5e_9001 --conditions masks dinosam all
+python simulation/scripts/robust_audit.py trossen_wxai_9001 masks all      # likewise for the other robots
+```
+
+Size: 12 × 100 + 3 × 100 = 1500 episodes per robot, ≈ 5–6 h per robot at 5 workers on a quiet box.
+Each `robust_report.py` call skips conditions it already has (resumable).
+
 ## Open issues / hand-over
 
-* `scripts/robust_batch.sh` (resumable) runs everything that remains, in this order:
-  1. Fusion on the dev seeds.
-  2. Reserved set 9001 (n = 100) clean / masks / dinosam / all for all three robots.
-  3. The fused rows on 9001.
-  4. The other single perturbations on 9001.
-
-  Output goes to `runs/robust_report/<name>/` and the log to `runs/robust/batch.log`. When it
-  is done: `robust_report.py --table <names>`, the README table, `robust_audit.py` on the worst
-  reserved conditions.
+* The reserved-seed table (section 5) is still to be run, on the final physics. `scripts/robust_batch.sh`
+  predates the default-on fusion: for the final report use the section 5 commands instead.
 * Distractor confusion: a mask component that is not the bread wins when it is larger. A
   workspace gate (drop detections whose lifted centroid lies outside the reachable table area)
   would remove it. Not tried: the distractors are placed outside the workspace by
