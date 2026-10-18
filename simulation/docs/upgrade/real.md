@@ -47,3 +47,4 @@ Branch `upgrade/real`, worktree `/home/leo/leo/HumanEgo-wt/real` (from origin/ma
   * In two full-res frames with the arms folded at home (A end, B start), measured camera-above-base / base-above-table = 1.47 (398/271 and 330/225 px, same depth).
   * The calibration puts the camera 0.221 m above the bases, so the real bases are ≈0.15 m above the table (camera ≈0.37 m). The sim has 0.215 m (0.436 m), an inference from a `safe_z_min` comment.
   * Sweep queued: cam_height 0.366 (single / bimanual, production / tuned), 0.346, 0.396.
+* Height sweep, seed 7777: single-arm production at cam_height 0.366 → **67.5 %** (27/40; 9 grasp misses, 3 rim, 1 drop) vs 12.5 % at 0.436. (Box load ~120 from other jobs; runs are slow.)

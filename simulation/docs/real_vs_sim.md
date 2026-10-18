@@ -217,7 +217,7 @@ The data-efficiency series would give 8 points on one curve; it is the best targ
 |---|---|---|---|---|
 | 0.436 (0.215 m, current) | 12.5 % | 82.5 % | 40.6 % | 92.2 % |
 | 0.396 (0.175 m) | pending | | | |
-| 0.366 (0.145 m, video estimate) | pending | pending | pending | pending |
+| 0.366 (0.145 m, video estimate) | **67.5 %** | pending | pending | pending |
 | 0.346 (0.125 m) | pending | | | |
 | 0.336 (0.115 m) | 75.0 % | 93.8 % | | |
 
