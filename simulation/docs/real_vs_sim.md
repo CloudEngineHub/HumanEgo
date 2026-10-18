@@ -158,15 +158,15 @@ camera foot on the support, x = heading, y = left. Full statistics:
 | | human data, median (p5–p95) | simulator |
 |---|---|---|
 | croissant length | 14.5 cm (14.0–15.4) | 13.8 |
-| croissant width | 7.3 cm (5.4–8.1), mask corrected for side view | 6.2 |
+| croissant width | 7.1 ± 0.8 cm, mask corrected for side view | 6.2 |
 | croissant height | 5.4 cm (4.9–7.3) | 5.0 |
 | plate diameter | 24.7 cm (24.3–25.4) | 24.5 ✓ |
-| bread–plate distance | 27.9 cm (22.2–31.4) | single 27.7 (17.9–37.4) ✓ wider |
-| bread yaw | 86° (67–101) | 90 ± 35 ✓ wider |
-| bread forward from the camera foot | 36 cm (30–44) | single 47 (40–54); 22 % of human inside |
-| bread depth along the optical axis | 52 cm (48–60) | 62 (57–68) |
-| bread below the optical axis | 14° (9–20) | 4° (0–9) |
-| head-camera height / pitch | 45 cm (38–48) / 34° (29–40) | 43.6 cm / 37° |
+| bread–plate sideways gap | 26.7 ± 3.0 cm (21–34) | single 16–38: twice as wide; 18 % < 20 cm (never in the human data) |
+| bread yaw (90 = left-right) | 85–91 ± 10° (two methods) | uniform 55–125: half outside the human 5–95 % band |
+| bread forward from the camera foot | 36 ± 4 cm (30–44) | single 39–55; 78 % of human episodes closer than the sim minimum |
+| bread depth along the optical axis | 53 ± 4 cm | 62 ± 4 |
+| bread below the optical axis | 14.5 ± 3.6° | 4.3°; 88 % of human episodes lower in the image than any sim draw |
+| head-camera height / pitch | 43.7 ± 3.7 cm (groups 46 / 42 / 38) / 34.3 ± 3.5° | 43.6 cm / 37° (fixed) |
 | hand–bread distance at the first training frame | 24 cm (19–36) | arm start pose: fixed |
 
 **Real rig** (video, §1.2 frames with the arms folded): camera-above-base / base-above-table = 1.47
@@ -175,7 +175,9 @@ the table** (sim 0.215 m) and the camera ≈0.37 m (sim 0.436 m).
 
 Proposed values, for the robustness and physics sessions: **`docs/proposed_scene.json`**.
 * Table height (`rig.cam_height` 0.366, test 0.346–0.396).
-* Croissant 14.5 × 7.3 × 5.4 cm, or `scene.bread.right.scale` 1.06.
+* Croissant 14.5 × 7.1 × 5.4 cm, or `scene.bread.right.scale` 1.06.
+* Only 2 of 60 human layouts fall inside the single-arm sampler on all axes.
+* An **in-distribution diagnostic set**: bread x 0.29–0.45 m (check reach), gap 0.21–0.31 m, yaw 87 ± 10°. Keep the current wide ranges as the out-of-distribution test.
 * A single-arm offset range widened towards the paper's.
 * An in-distribution diagnostic scene set (human-matched camera-frame depth / elevation).
 * `docs/proposed_portable_controller.json`: the tuned Trossen values restricted to knobs that exist in the real `Control.yaml` (alpha 0.175, `duration_smooth_param` 2.0, grasp threshold 0.65, idle distance 0.083 m, idle time 2.65 s), for real experiment E4.

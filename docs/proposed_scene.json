@@ -22,10 +22,10 @@
    ],
    "proposed": [
     14.5,
-    7.3,
+    7.1,
     5.4
    ],
-   "evidence": "human data, 60 episodes: length 14.5 (p5-p95 14.0-15.4; mask silhouette, 14.5 from contour+erosion), width 7.3 (5.4-8.1; mask, corrected for the side-view inflation; raw inner contour 4.7 is a lower bound), height 5.4 (4.9-7.3; semidense p95). One croissant type in all 61 episodes (same object as the real rollouts).",
+   "evidence": "human data, 60 episodes: length 14.5 +- 0.4 (mask silhouette; contour+erosion agrees), width 7.1 +- 0.8 (mask, corrected for side-view inflation), height 5.4 median (semidense p95). The sim size came from the inner-eroded contour (~4 px per side smaller). One croissant type in all 61 episodes.",
    "confidence": "length high, height medium, width medium (correction model)"
   },
   "scale_if_uniform": {
@@ -69,8 +69,8 @@
   "confidence": "low: paper text only, no measured real positions"
  },
  "layout_vs_training_distribution": {
-  "finding": "In the policy's camera frame the human training objects are closer and lower than in the sim: bread depth along the optical axis 52 cm (48-60) vs sim 62 (57-68); bread 14 deg below the optical axis (9-20) vs sim 4 deg (0-9); range 57 cm vs 65-68. Only 22 % of human bread x (forward from the camera foot, 36 cm, 30-44) fall inside the sim range (39-55); only 7 % of episodes are inside the sim's joint single-arm box.",
-  "proposed": "add an 'in-distribution' scene set for diagnostics: objects at forward x ~0.33-0.42 m from the camera foot (human-matched camera-frame depth / elevation at the current camera pose), and report success on it next to the default sampler. Do not replace the default sampler until the real robot's object positions are known (the real rig's own layout, not the human head pose, is what the 95 % was measured on).",
+  "finding": "At t0 (first training frame) the human objects are closer to the camera and lower in the image than the sim's: bread forward of the camera foot 36 +- 4 cm (30-44) vs sim 39-55 (78 % of human episodes closer than the sim minimum); bread depth along the optical axis 53 +- 4 vs 62 +- 4 cm; bread 14.5 +- 3.6 deg below the optical axis vs 4.3 deg (88 % of human episodes lower in the image than any sim draw); only 2 of 60 human layouts fall inside the single-arm sampler on all axes at once. Head camera height 43.7 +- 3.7 cm (three scene groups 46 / 42 / 38) and pitch 34.3 +- 3.5 deg vs the sim's fixed 43.6 cm / 37 deg.",
+  "proposed": "Add an in-distribution diagnostic set next to the default sampler: bread x 0.29-0.45 m in the sim world (check the arm's reach; at x = 0.30 the bread is still in view, ~17 deg below the axis), bread-plate sideways gap 0.21-0.31 m (human 26.7 +- 3.0 cm), forward offset 0 +- 0.06 m, bread yaw 87 +- 10 deg; keep the current wide ranges as the out-of-distribution test (18 % of sim gaps are < 20 cm, never seen in the human data; at 16 cm the croissant touches the plate rim). Compare against the human data in single mode (bimanual puts the bread ~12 cm further right).",
   "confidence": "high for the human numbers; the robot-side implication is a hypothesis"
  },
  "sources": {
