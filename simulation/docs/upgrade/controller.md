@@ -144,8 +144,9 @@ signals (Franka left: slow +25, reperceive +6, touch +4 on seed 7777) did not ho
 
 ## Hand-over
 
-**On main:** 418f103 parity test + Live fixes; the controller options below (off by default, Python + JS,
-sync parity exact with all of them on, see "Final parity").
+**On main:** 418f103 parity test + Live fixes; fd4e0b0 the controller options below (off by default,
+Python + JS). Final parity (Trossen scene 1, new scene defaults, every option on): sync mode identical,
+25 / 25 re-perception calls at the same times, EE targets 0.000 mm, ICT 1e-6; pytest 61 passed.
 
 **Final per-robot profiles: keep ALL of these OFF** (no significant gain on v2; slow approach harmful):
 
