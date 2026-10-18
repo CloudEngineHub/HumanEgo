@@ -23,6 +23,7 @@ import numpy as np  # noqa: E402
 from autotune.params import params_to_overrides  # noqa: E402
 from humanego_sim.env import load_config  # noqa: E402
 from humanego_sim.evaluate import evaluate  # noqa: E402
+from humanego_sim.profiles import add_profile_arg  # noqa: E402
 from humanego_sim.sampling import sample_scene  # noqa: E402
 
 
@@ -50,15 +51,17 @@ if __name__ == "__main__":
     ap.add_argument("--robot", default=None)
     ap.add_argument("--set", action="append", default=[], help="fixed override for every trial (incl. production)")
     ap.add_argument("--out_name", default="final.json")
+    add_profile_arg(ap)    # baseline trial and base of every candidate
     args = ap.parse_args()
     run_dir = os.path.join(SIM, "autotune_runs", args.name)
     from evaluate import parse_sets
     from humanego_sim.env import deep_update
-    fixed = deep_update({"mode": args.mode, **({"robot": args.robot} if args.robot else {})}, parse_sets(args.set))
+    fixed = deep_update({"mode": args.mode, "profile": args.profile, **({"robot": args.robot} if args.robot else {})},
+                        parse_sets(args.set))
     base = load_config(None, fixed)
     rng = np.random.default_rng(args.seed)
     scenes = [sample_scene(rng, args.mode) for _ in range(args.n)]
-    trials = [("production", {}, None)] + [(f"batch{it}_{s:.3f}", p, s) for s, p, it in
+    trials = [(args.profile, {}, None)] + [(f"batch{it}_{s:.3f}", p, s) for s, p, it in
                                           candidates(run_dir, args.top, args.min_iter)]
     results = []
     for name, params, batch_score in trials:
@@ -71,8 +74,9 @@ if __name__ == "__main__":
         results.append({"name": name, "params": params, "batch_score": batch_score, "validation": st})
     best = max(results[1:], key=lambda r: r["validation"]["per_side_success_rate"])
     out = {"params": best["params"], "stats": best["validation"], "validation": best["validation"],
-           "chosen": best["name"], "trials": results, "n_scenes": args.n, "seed": args.seed}
+           "chosen": best["name"], "trials": results, "n_scenes": args.n, "seed": args.seed,
+           "fixed": fixed}                     # overrides every trial (incl. the baseline) ran with
     with open(os.path.join(run_dir, args.out_name), "w") as f:
         json.dump(out, f, indent=1)
     print(f"[validate] chosen {best['name']}: {best['validation']['per_side_success_rate']:.3f} per arm "
-          f"(production {results[0]['validation']['per_side_success_rate']:.3f}) -> {run_dir}/final.json")
+          f"({args.profile} {results[0]['validation']['per_side_success_rate']:.3f}) -> {run_dir}/final.json")

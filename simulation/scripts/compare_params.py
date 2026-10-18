@@ -5,6 +5,7 @@ Evaluate several parameter sets on the SAME held-out scenes (common random numbe
 
     python simulation/scripts/compare_params.py --sets production=- tuned=simulation/autotune_runs/soft_v4/final.json \\
         --drop physics.soft.damping --n 32 --seed 7777 8888 --set robot='"franka_panda"'
+    python simulation/scripts/compare_params.py --sets tuned=- --profile tuned --set robot='"ur5e"'
 
 Protocol (README, "Evaluation protocol"): development seeds 7777 / 8888 select parameters;
 seeds 9001-9099 are reserved for final reports (--final) and must never be used to pick them.
@@ -25,6 +26,7 @@ from autotune.params import params_to_overrides  # noqa: E402
 from evaluate import parse_sets  # noqa: E402
 from humanego_sim.env import deep_update, load_config  # noqa: E402
 from humanego_sim.evaluate import evaluate  # noqa: E402
+from humanego_sim.profiles import add_profile_arg  # noqa: E402
 from humanego_sim.sampling import sample_scenes  # noqa: E402
 from humanego_sim.stats import check_seed, fmt_paired, fmt_rate, paired, summarize_ci  # noqa: E402
 
@@ -62,9 +64,11 @@ if __name__ == "__main__":
     ap.add_argument("--workers", type=int, default=12)
     ap.add_argument("--out", default=None)
     ap.add_argument("--log", default=None, help="keep every episode under simulation/runs/<log>/<set name>/")
+    add_profile_arg(ap)    # base profile of every set; a set's params file applies on top
     args = ap.parse_args()
     check_seed(args.seed, args.final)
     extra = parse_sets(args.set)
+    extra.setdefault("profile", args.profile)
     base = load_config(None, extra)
     mode = base.get("mode", "bimanual")
     variation = json.loads(args.variation) if args.variation else None

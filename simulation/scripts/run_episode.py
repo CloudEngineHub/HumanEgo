@@ -5,6 +5,7 @@ Run the released HumanEgo serve_bread policy closed-loop in simulation.
     python simulation/scripts/run_episode.py                       # bimanual, Trossen WidowX AI + D405
     python simulation/scripts/run_episode.py --mode single --video
     python simulation/scripts/run_episode.py --robot franka_panda --camera zed2i
+    python simulation/scripts/run_episode.py --profile tuned           # shipped tuned controller + grasp skill
 
 Outputs land in simulation/runs/<name>/ (episode.json, policy_view/*.jpg, episode.mp4).
 """
@@ -17,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from humanego_sim.env import load_config  # noqa: E402
+from humanego_sim.profiles import add_profile_arg  # noqa: E402
 from humanego_sim.replay import render_episode_video  # noqa: E402
 from humanego_sim.runner import EpisodeRunner  # noqa: E402
 
@@ -33,9 +35,10 @@ def main():
     ap.add_argument("--out", default=None)
     ap.add_argument("--video", action="store_true")
     ap.add_argument("--camera_view", default="front_view")
+    add_profile_arg(ap)
     args = ap.parse_args()
 
-    ov = {}
+    ov = {"profile": args.profile}
     for k in ("mode", "robot", "camera"):
         if getattr(args, k):
             ov[k] = getattr(args, k)

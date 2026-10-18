@@ -4,6 +4,7 @@ Batch success rate of the released policy in simulation.
 
     python simulation/scripts/evaluate.py --n 32 --workers 8
     python simulation/scripts/evaluate.py --mode single --n 40 --set control.alpha=0.3
+    python simulation/scripts/evaluate.py --profile tuned --robot ur5e --n 24 --seed 7777
 
 Prints per-arm / per-side / both-served success with Wilson 95 % intervals. Scene sets: --seed
 7777 / 8888 for development, 9001-9099 only with --final (README, "Evaluation protocol").
@@ -17,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from humanego_sim.evaluate import evaluate  # noqa: E402
+from humanego_sim.profiles import add_profile_arg  # noqa: E402
 from humanego_sim.sampling import sample_scenes  # noqa: E402
 from humanego_sim.stats import check_seed  # noqa: E402
 
@@ -47,9 +49,11 @@ if __name__ == "__main__":
     ap.add_argument("--variation", default=None,
                     help="scene variation JSON (sampling.sample_scenes), e.g. '{\"light\": {\"intensity\": 0.35}}'")
     ap.add_argument("--final", action="store_true", help="allow the reserved seeds 9001-9099 (final reports only)")
+    add_profile_arg(ap)
     args = ap.parse_args()
     check_seed([args.seed], args.final)
     ov = parse_sets(args.set)
+    ov.setdefault("profile", args.profile)
     for k in ("mode", "robot", "camera"):
         if getattr(args, k):
             ov[k] = getattr(args, k)

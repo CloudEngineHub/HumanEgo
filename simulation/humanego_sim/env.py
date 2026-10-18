@@ -39,8 +39,13 @@ def load_config(path: Optional[str] = None, overrides: Optional[dict] = None) ->
     per = cfg.get("per_robot", {}).get(robot)
     if per:
         cfg = deep_update(cfg, per)
+    # named profile (profiles.py: production | tuned) sits between per_robot and explicit overrides
+    from .profiles import profile_overrides
+    profile = (overrides or {}).get("profile", cfg.get("profile"))
+    cfg = deep_update(cfg, profile_overrides(profile, robot, cfg))
     if overrides:
         cfg = deep_update(cfg, overrides)
+    cfg["profile"] = profile or "production"
     return cfg
 
 

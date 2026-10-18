@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 
 from autotune.loop import AutoTuner  # noqa: E402
 from autotune.params import space_from_names  # noqa: E402
+from humanego_sim.profiles import add_profile_arg  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -38,8 +39,9 @@ if __name__ == "__main__":
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--init", default=None, help="params JSON (e.g. a previous final.json) to start the search from")
     ap.add_argument("--set", action="append", default=[], help="fixed base override, e.g. physics.soft.damping=0.03")
+    add_profile_arg(ap)    # candidates are searched on top of this profile
     args = ap.parse_args()
-    base = {"mode": args.mode}
+    base = {"mode": args.mode, "profile": args.profile}
     if args.robot:
         base["robot"] = args.robot
     if args.camera:
