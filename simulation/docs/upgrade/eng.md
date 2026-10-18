@@ -118,6 +118,9 @@ parity, protocol commits), the synthetic perception env needed `cfg`, `rng` and 
 episodes. The README results table is now generated, and a test fails when it drifts from
 `configs/tuned`.
 
+On GitHub, run 39115067202 (main 7449121) passed in 47 s:
+https://github.com/TX-Leo/HumanEgo/actions/runs/39115067202
+
 ## 3. One-command site rebuild
 
 `python simulation/scripts/rebuild_site.py [--workers 2]` (never deploys):
