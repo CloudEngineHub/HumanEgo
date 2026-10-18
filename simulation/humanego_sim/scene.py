@@ -228,7 +228,8 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     m.rgba = [0.62, 0.62, 0.60, 1.0]
     m.reflectance = 0.0
 
-    kinds = sorted({b["type"] for b in _breads(cfg, mode, sides).values()})
+    breads = _breads(cfg, mode, sides)
+    kinds = sorted({b["type"] for b in breads.values()})
     bread_vis = {}
     for obj in kinds:
         t = spec.add_texture()
@@ -246,27 +247,29 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
             surf = phys.get("soft", {}).get("surface", "coarse")
             fm = trimesh.load(os.path.join(d, f"{obj}_flex{'_fine' if surf == 'fine' else ''}.obj"),
                               force="mesh", process=False)
-            me = spec.add_mesh()
-            me.name = f"{obj}_flex"
-            # the flex surface carries a contact shell of `radius`: shrink it by that much so the
-            # outer contact surface stays on the visible crust (a thick shell resists tunnelling)
-            Vf = np.asarray(fm.vertices)
-            rad = float(phys.get("soft", {}).get("radius", 0.001))
-            ext_f = Vf.max(0) - Vf.min(0)
-            Vf = Vf * np.maximum(ext_f - 2 * rad, 1e-3) / ext_f
-            me.uservert = Vf.ravel().tolist()
-            me.userface = np.asarray(fm.faces).ravel().tolist()
             z = np.load(os.path.join(d, f"{obj}_vis.npz"))
-            bread_vis[obj] = (z["V"], z["F"], z["UV"])
+            rad = float(phys.get("soft", {}).get("radius", 0.001))
+            # one flex mesh per distinct size of this kind (scene.bread.<side>.scale)
+            for sc in sorted({_bread_scale(b) for b in breads.values() if b["type"] == obj}):
+                me = spec.add_mesh()
+                me.name = _scaled(f"{obj}_flex", sc)
+                # the flex surface carries a contact shell of `radius`: shrink it by that much so the
+                # outer contact surface stays on the visible crust (a thick shell resists tunnelling)
+                Vf = np.asarray(fm.vertices) * sc
+                ext_f = Vf.max(0) - Vf.min(0)
+                Vf = Vf * np.maximum(ext_f - 2 * rad, 1e-3) / ext_f
+                me.uservert = Vf.ravel().tolist()
+                me.userface = np.asarray(fm.faces).ravel().tolist()
+                bread_vis[(obj, sc)] = (z["V"] * sc, z["F"], z["UV"])
         else:
-            me = spec.add_mesh()
-            me.name = f"{obj}_vis"
-            me.file = f"objects/{obj}/{obj}.obj"
             n_col = len([f for f in os.listdir(d) if f.startswith(f"{obj}_col")])
-            for i in range(n_col):
-                mc = spec.add_mesh()
-                mc.name = f"{obj}_col{i}"
-                mc.file = f"objects/{obj}/{obj}_col{i}.obj"
+            for sc in sorted({_bread_scale(b) for b in breads.values() if b["type"] == obj}):
+                for mn, fn in [(f"{obj}_vis", f"{obj}.obj")] + [(f"{obj}_col{i}", f"{obj}_col{i}.obj") for i in range(n_col)]:
+                    mc = spec.add_mesh()
+                    mc.name = _scaled(mn, sc)
+                    mc.file = f"objects/{obj}/{fn}"
+                    if sc != 1.0:
+                        mc.scale = [sc, sc, sc]
 
     with open(os.path.join(ASSETS, "objects", "plate", "plate_meta.json")) as f:
         pm = json.load(f)
@@ -412,17 +415,20 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
     for s, bd in breads.items():
         kind = bd["type"]
         x, y, yaw = bd["pose"]
-        ext = _mesh_extents(kind)
-        mass = float(bm.get(kind, 0.055))
+        scl = _bread_scale(bd)                   # uniform size variation, same density
+        ext = _mesh_extents(kind) * scl
+        mass = float(bm.get(kind, 0.055)) * scl ** 3
         if soft:
             sp_cfg = dict(phys.get("soft", {}))
             cells = sp_cfg.get("cells", {})
             sp_cfg["cells"] = cells.get(kind, [4, 2, 2]) if isinstance(cells, dict) else cells
             # compiled undeformed with yaw 0; the episode reset places it (env.set_object_pose)
             grid = add_soft_bread(spec, f"bread_{s}", kind, [x, y, ext[2] / 2 + 0.0008], mass,
-                                  bread_vis[kind], f"{kind}_flex", f"{kind}_mat", sp_cfg, contact,
+                                  bread_vis[(kind, scl)], _scaled(f"{kind}_flex", scl), f"{kind}_mat", sp_cfg, contact,
                                   flex_group=G_COLLISION, skin_group=G_OBJECT)
             obj_meta[f"bread_{s}"] = {"kind": kind, "extents": ext.tolist(), "side": s, "soft": grid}
+            if scl != 1.0:
+                obj_meta[f"bread_{s}"]["scale"] = scl
             continue
         b = wb.add_body()
         b.name = f"bread_{s}"
@@ -433,7 +439,7 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         g = b.add_geom()
         g.name = f"bread_{s}_vis"
         g.type = mujoco.mjtGeom.mjGEOM_MESH
-        g.meshname = f"{kind}_vis"
+        g.meshname = _scaled(f"{kind}_vis", scl)
         g.material = f"{kind}_mat"
         g.group = G_OBJECT
         g.contype = 0
@@ -443,13 +449,14 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
         n_col = len([f for f in os.listdir(d) if f.startswith(f"{kind}_col")])
         # MuJoCo derives mass from geom volume x density: pick the density that gives the real weight
         import trimesh
-        vol = sum(trimesh.load(os.path.join(d, f"{kind}_col{i}.obj"), force="mesh").convex_hull.volume for i in range(n_col))
+        vol = sum(trimesh.load(os.path.join(d, f"{kind}_col{i}.obj"), force="mesh").convex_hull.volume
+                  for i in range(n_col)) * scl ** 3
         dens = mass / max(vol, 1e-9)
         for i in range(n_col):
             gc = b.add_geom()
             gc.name = f"bread_{s}_col{i}"
             gc.type = mujoco.mjtGeom.mjGEOM_MESH
-            gc.meshname = f"{kind}_col{i}"
+            gc.meshname = _scaled(f"{kind}_col{i}", scl)
             gc.group = G_COLLISION
             gc.friction = contact["friction"]
             gc.solref = contact["solref"]
@@ -459,6 +466,8 @@ def build_scene(cfg: dict, robot: RobotSpec, cam: CameraSpec, out_name: Optional
             gc.rgba = [0.8, 0.5, 0.2, 0.0]
             gc.density = dens
         obj_meta[f"bread_{s}"] = {"kind": kind, "extents": ext.tolist(), "side": s}
+        if scl != 1.0:
+            obj_meta[f"bread_{s}"]["scale"] = scl
 
     # plate: visual lathe mesh + primitive collision (flat well + tilted rim ring)
     px, py, pyaw = plate_pose
@@ -543,6 +552,16 @@ def _breads(cfg: dict, mode: str, sides: List[str]) -> Dict[str, dict]:
     if mode == "single":
         return {"right": sc["single"]["bread"]}
     return {s: sc["bread"][s] for s in sides}
+
+
+def _bread_scale(bd: dict) -> float:
+    """scene.bread.<side>.scale: uniform scale of one bread (1 = the measured size)."""
+    return float(bd.get("scale", 1.0))
+
+
+def _scaled(mesh_name: str, scale: float) -> str:
+    """Mesh name of a scaled bread; the unscaled name (and so the unchanged XML) at scale 1."""
+    return mesh_name if scale == 1.0 else f"{mesh_name}_s{round(scale * 1e4):05d}"
 
 
 def _mesh_extents(kind: str) -> np.ndarray:
